@@ -1,0 +1,3 @@
+[submodule "submodules/hipporag"]
+	path = submodules/hipporag
+	url = https://github.com/OSU-NLP-Group/HippoRAG.git

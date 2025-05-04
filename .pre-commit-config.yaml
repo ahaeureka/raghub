@@ -1,0 +1,23 @@
+# Please run command `pre-commit install` to install pre-commit hook
+repos:
+  - repo: local
+    hooks:
+      - id: python-fmt
+        name: Python Format
+        entry: make fmt-check
+        language: system
+        exclude: '.dev'
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+        args: []
+      - id: python-lint-mypy
+        name: Python Lint mypy
+        entry: make mypy
+        language: system
+        exclude: '.dev'
+        types: [python]
+        stages: [pre-commit]
+        pass_filenames: false
+        args: []
+

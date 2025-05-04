@@ -1,0 +1,120 @@
+{
+    "chunk-e1530292228659b056a69bf4ca0aad85": {
+        "extracted_entities": [],
+        "extracted_triples": [
+            [
+                "Oliver Badman",
+                "is a",
+                "politician"
+            ]
+        ]
+    },
+    "chunk-9a222cece7544520899c76ebe6a88814": {
+        "extracted_entities": [
+            "George Rankin"
+        ],
+        "extracted_triples": [
+            [
+                "George Rankin",
+                "is_a",
+                "politician"
+            ]
+        ]
+    },
+    "chunk-733ff7b5b1080ca4eb636ab168e5662d": {
+        "extracted_entities": [
+            "Thomas Marwick"
+        ],
+        "extracted_triples": [
+            [
+                "Thomas Marwick",
+                "is_a",
+                "politician"
+            ]
+        ]
+    },
+    "chunk-7c65190068261ee31c92160023eb107f": {
+        "extracted_entities": [],
+        "extracted_triples": [
+            [
+                "Cinderella",
+                "attended",
+                "royal ball"
+            ]
+        ]
+    },
+    "chunk-730ec30c07b2d626ab90d43b13155b15": {
+        "extracted_entities": [],
+        "extracted_triples": [
+            [
+                "The prince",
+                "used",
+                "glass slipper"
+            ],
+            [
+                "glass slipper",
+                "was used to",
+                "search the kingdom"
+            ],
+            [
+                "The prince",
+                "searched",
+                "kingdom"
+            ]
+        ]
+    },
+    "chunk-0b3f86e049d90fe8d425738a4e9dcdc1": {
+        "extracted_entities": [],
+        "extracted_triples": [
+            [
+                "the slipper",
+                "fit",
+                "Cinderella"
+            ],
+            [
+                "Cinderella",
+                "was reunited with",
+                "the prince"
+            ]
+        ]
+    },
+    "chunk-05ebe6854219bf0492e050c241805da4": {
+        "extracted_entities": [
+            "Erik Hort",
+            "Montebello"
+        ],
+        "extracted_triples": [
+            [
+                "Erik Hort",
+                "birthplace is",
+                "Montebello"
+            ]
+        ]
+    },
+    "chunk-435eaa3536ea075eb9b3cee5c14a4840": {
+        "extracted_entities": [
+            "Marina",
+            "Minsk"
+        ],
+        "extracted_triples": [
+            [
+                "Marina",
+                "is born in",
+                "Minsk"
+            ]
+        ]
+    },
+    "chunk-d6df73e3b8e71d69e39075792fb855cf": {
+        "extracted_entities": [
+            "Montebello",
+            "Rockland County"
+        ],
+        "extracted_triples": [
+            [
+                "Montebello",
+                "is a part of",
+                "Rockland County"
+            ]
+        ]
+    }
+}

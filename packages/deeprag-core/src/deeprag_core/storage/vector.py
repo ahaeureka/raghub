@@ -1,0 +1,169 @@
+from abc import abstractmethod
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
+from deeprag_core.schemas.document import Document
+from deeprag_core.utils.class_meta import SingletonRegisterMeta
+from git import Optional
+from loguru import logger
+
+
+class VectorStorage(metaclass=SingletonRegisterMeta):
+    # name = None
+    # _registry: Dict[str, Type["VectorStorage"]] = {}  # 注册表
+    @abstractmethod
+    def init(self):
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    def add_documents(self, texts: List[Document]) -> List[Document]:
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    def get_by_ids(self, ids: List[str]) -> List[Document]:
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    def get(self, uid: str) -> Document:
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    def select_on_metadata(self, metadata_filter: Dict[str, Any]) -> List[Document]:
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    def similarity_search_by_vector(
+        self, embedding: List[float], k: int, filter: Optional[Dict[str, str]] = None
+    ) -> List[Tuple[Document, float]]:
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    def add_documents_filter_exists(self, texts: List[Document]) -> List[Document]:
+        """
+        Add documents to the vector storage, filtering out those that already exist.
+        Args:
+            texts: List of Document objects to add.
+
+        Returns:
+            List of Document objects that were added.
+        """
+        # Check if the document already exists in the storage
+        existing_docs = self.get_by_ids([doc.uid for doc in texts])
+        existing_ids = {doc.uid for doc in existing_docs}
+
+        # Filter out documents that already exist
+        new_docs = [doc for doc in texts if doc.uid not in existing_ids]
+
+        # Add new documents to the storage
+        if new_docs:
+            logger.debug(f"add_documents_filter_exists:Adding {new_docs} new documents to the vector storage.")
+            self.add_documents(new_docs)
+
+        return new_docs
+
+    def knn(
+        self,
+        query_docs: List[Document],
+        target_docs: List[Document],
+        k=2047,
+        query_batch_size=1000,
+        key_batch_size=10000,
+    ) -> Dict[str, Tuple[List[str], List[float]]]:
+        """
+        Retrieve the top-k nearest neighbors for each query id from the key ids.
+        Args:
+            query_ids:
+            key_ids:
+            k: top-k
+            query_batch_size:
+            key_batch_size:
+
+        Returns:
+
+        """
+        import torch
+        from tqdm import tqdm
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # np.array(float_list, dtype=np.float32)
+        query_vecs = np.array(
+            [doc.embedding for doc in query_docs], dtype=np.float32
+        )  # Assuming Document has an embedding attribute
+        target_vecs = np.array(
+            [doc.embedding for doc in target_docs], dtype=np.float32
+        )  # Assuming Document has an embedding attribute
+        query_ids = [doc.uid for doc in query_docs]
+        target_ids = [doc.uid for doc in target_docs]
+        print(f"vector knn query_vecs: {query_vecs}")
+        query_tensor_vecs = torch.tensor(query_vecs, dtype=torch.float32)
+        query_tensor_vecs = torch.nn.functional.normalize(query_tensor_vecs, dim=1)
+
+        key_vecs = torch.tensor(target_vecs, dtype=torch.float32)
+        key_vecs = torch.nn.functional.normalize(key_vecs, dim=1)
+
+        results = {}
+        key_ids = target_ids
+
+        def get_batches(vecs, batch_size):
+            for i in range(0, len(vecs), batch_size):
+                yield vecs[i : i + batch_size], i
+
+        for query_batch, query_batch_start_idx in tqdm(
+            get_batches(vecs=query_tensor_vecs, batch_size=query_batch_size),
+            total=(len(query_vecs) + query_batch_size - 1) // query_batch_size,  # Calculate total batches
+            desc="KNN for Queries",
+        ):
+            query_batch = query_batch.clone().detach()
+            query_batch = query_batch.to(device)
+
+            batch_topk_sim_scores = []
+            batch_topk_indices = []
+
+            offset_keys = 0
+
+            for key_batch, key_batch_start_idx in get_batches(vecs=key_vecs, batch_size=key_batch_size):
+                key_batch = key_batch.to(device)
+                actual_key_batch_size = key_batch.size(0)
+
+                similarity = torch.mm(query_batch, key_batch.T)
+
+                topk_sim_scores, topk_indices = torch.topk(
+                    similarity, min(k, actual_key_batch_size), dim=1, largest=True, sorted=True
+                )
+
+                topk_indices += offset_keys
+
+                batch_topk_sim_scores.append(topk_sim_scores)
+                batch_topk_indices.append(topk_indices)
+
+                del similarity
+                key_batch = key_batch.cpu()
+                torch.cuda.empty_cache()
+
+                offset_keys += actual_key_batch_size
+            # end for each kb batch
+
+            concatenated_scores = torch.cat(batch_topk_sim_scores, dim=1)
+            concatenated_topk_indices = torch.cat(batch_topk_indices, dim=1)
+
+            final_topk_sim_scores, final_topk_indices = torch.topk(
+                concatenated_scores, min(k, concatenated_scores.size(1)), dim=1, largest=True, sorted=True
+            )
+            final_topk_indices = final_topk_indices.cpu()
+            final_topk_sim_scores = final_topk_sim_scores.cpu()
+
+            for i in range(final_topk_indices.size(0)):
+                query_relative_idx = query_batch_start_idx + i
+                query_idx = query_ids[query_relative_idx]
+
+                final_topk_indices_i = final_topk_indices[i]
+                final_topk_sim_scores_i = final_topk_sim_scores[i]
+
+                query_to_topk_key_relative_ids = concatenated_topk_indices[i][final_topk_indices_i]
+                query_to_topk_key_ids = [key_ids[idx] for idx in query_to_topk_key_relative_ids.cpu().numpy()]
+                results[query_idx] = (query_to_topk_key_ids, final_topk_sim_scores_i.numpy().tolist())
+
+            query_batch = query_batch.cpu()
+            torch.cuda.empty_cache()
+        # end for each query batch
+
+        return results

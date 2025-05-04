@@ -1,0 +1,30 @@
+[project]
+name = "deeprag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pytest>=8.3.5",
+]
+
+[dependency-groups]
+dev = [
+ "pre-commit>=4.2.0",
+ "isort>=6.0.1",
+ "ruff>=0.11.6",
+ "flake8>=7.2.0",
+ "pytest>=8.3.5",
+ "setuptools>=80.0.1",
+ "mypy>=1.15.0",
+]
+
+[tool.uv]
+managed = true
+
+[tool.uv.workspace]
+members = [ "packages/deeprag-core", "packages/deeprag-interfaces", "packages/deeprag-app",]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

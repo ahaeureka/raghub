@@ -1,0 +1,35 @@
+{
+    "flake8.enabled": true,
+    "python.languageServer": "Pylance",
+    "terminal.integrated.defaultProfile.linux": "zsh",
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "remote.defaultExtensionsIfInstalledLocally": [
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "GitHub.vscode-pull-request-github",
+        "ms-python.python",
+        "ms-python.isort",
+        "ms-python.vscode-pylance",
+        "ms-python.autopep8",
+        "ms-vscode.makefile-tools",
+        "ms-python.flake8",
+        "ms-azuretools.vscode-docker",
+        "ms-python.mypy-type-checker",
+        "charliermarsh.ruff"
+    ],
+    "mypy-type-checker.args": [
+        "--config-file=${workspaceFolder}/.mypy.ini"
+    ],
+    "flake8.args": [
+        "--rcfile=${workspaceFolder}/.flake8"
+    ],
+    "isort.args": [
+        "--settings-file",
+        "${workspaceFolder}/.isort.cfg"
+    ],
+    "files.autoSave": "afterDelay",
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+    "editor.formatOnSave": true
+  }
