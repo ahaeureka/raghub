@@ -14,17 +14,9 @@ class BaseRAG(ABC):
     def add_documents(self, texts: List[Document]) -> List[Document]:
         raise NotImplementedError("This method should be overridden by subclasses.")
 
-    # @abstractmethod
-    # def generate(self, query:str, retrieved_docs:List[Document])->str:
-    #     raise NotImplementedError("This method should be overridden by subclasses.")
-
-    # @abstractmethod
-    # def update(self, texts:List[Document])->None:
-    #     raise NotImplementedError("This method should be overridden by subclasses.")
-
-    # @abstractmethod
-    # def delete(self, doc_ids:List[str])->None:
-    #     raise NotImplementedError("This method 'delete' should be overridden by subclasses.")
+    @abstractmethod
+    def delete(self, doc_ids: List[str]) -> None:
+        raise NotImplementedError("This method 'delete' should be overridden by subclasses.")
 
     # @abstractmethod
     def init(self) -> None:

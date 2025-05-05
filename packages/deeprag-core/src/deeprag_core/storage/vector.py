@@ -32,6 +32,18 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
+    def delete(self, ids: List[str]) -> bool:
+        """
+        Delete documents by their IDs from the vector storage.
+        Args:
+            ids: List of document IDs to delete.
+
+        Returns:
+            bool: True if deletion was successful, False otherwise.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
     def similarity_search_by_vector(
         self, embedding: List[float], k: int, filter: Optional[Dict[str, str]] = None
     ) -> List[Tuple[Document, float]]:

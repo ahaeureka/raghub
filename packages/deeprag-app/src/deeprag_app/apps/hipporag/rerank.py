@@ -1,13 +1,9 @@
 import ast
-import difflib
 import json
 import re
-import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
-from deeprag_app.apps.hipporag.prompts import DSPyRerankPrompt
 from deeprag_core.operators.base_operator import BaseOperator
-from deeprag_core.schemas.document import Document
 from deeprag_core.schemas.dspy_filter_model import DSPyFilterOutputModel
 from langchain_core.messages import AIMessage
 from loguru import logger
@@ -27,7 +23,7 @@ class DSPyFilter(BaseOperator[DSPyFilterOutputModel]):
 
     def output_parser(self, content: AIMessage) -> DSPyFilterOutputModel:
         sections: List[Tuple[Optional[str], List[str]]] = [(None, [])]
-        response:str = content.content
+        response: str = content.content
         logger.debug(f"DSPyFilter response: {response}")
         field_header_pattern = re.compile("\\[\\[ ## (\\w+) ## \\]\\]")
         for line in response.splitlines():
@@ -56,7 +52,6 @@ class DSPyFilter(BaseOperator[DSPyFilterOutputModel]):
                         f"Error parsing field {k}: {e}.\n\n\t\tOn attempting to parse the value\n```\n{value}\n```"
                     )
         return DSPyFilterOutputModel(name="DSPyFilter", fact_after_filter=parsed, completed="[[ ## completed ## ]]")
-
 
     def post_process(self, output: Dict[str, Any]) -> Dict[str, Any]:
         return output

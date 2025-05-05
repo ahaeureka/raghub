@@ -4,7 +4,7 @@ import itertools
 import json
 import re
 import traceback
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 from deeprag_app.app_schemas.hipporag_models import OpenIEInfo
@@ -82,6 +82,15 @@ class HippoRAGImpl(BaseRAG):
         self._doc_prefix = "doc"
 
     def add_documents(self, texts: List[Document], lang="en") -> List[Document]:
+        """
+        Adds documents to the vector store and graph store.
+
+        Args:
+            texts : List[Document]
+                A list of Document objects to be added to the vector store and graph store.
+            lang : str
+                The language of the documents. Defaults to "en".
+        """
         chunk_triples: Dict[str, List[Tuple[str, str, str]]] = {}  # a dictionary of triples for each chunk
         openie_infos: List[OpenIEInfo] = []
         entities_str = []
@@ -102,7 +111,7 @@ class HippoRAGImpl(BaseRAG):
                 )
             )
             graph_nodes, _ = self._extract_entity_nodes(ie.triples)
-            chunk_triples[doc.uid] = [tuple(item) for item in ie.triples if len(item) == 3]
+            chunk_triples[doc.uid] = [(item[0], item[1], item[2]) for item in ie.triples if len(item) == 3]
 
             entities_str.extend([str(node) for node in graph_nodes])
             facts = self._flatten_facts([ie.triples])
@@ -110,15 +119,11 @@ class HippoRAGImpl(BaseRAG):
 
         entities_str = list(set(entities_str))
         facts_str = list(set(facts_str))
-        logger.debug(f"Entities: {entities_str}")
         embed_entities = self.add_embeddings(entities_str, self._entity_prefix, metadata={"namespace": "entity"})
-        logger.debug(f"Facts: {facts_str}")
 
         self.add_embeddings(facts_str, self._fact_prefix, metadata={"namespace": "fact"})
 
         self._db.save_openie_info(openie_infos)
-        vcount = self._graph_store.vertices_count()
-        logger.info(f"Current graph vertex count: {vcount}")
         docs = self._embedd_store.add_documents_filter_exists(texts)
         _, new_docs = self._add_new_nodes(embed_entities, docs)
 
@@ -131,25 +136,30 @@ class HippoRAGImpl(BaseRAG):
             self._augment_graph(embed_entities, texts, node_to_node_stats)
             self._save()
         for key, chunks in ent_node_to_chunk_ids.items():
-            self._db.set_ent_node_to_chunk_ids(key, chunks)
+            exists_ent_chunks = self._db.get_ent_node_to_chunk_ids(key) or []
+            self._db.set_ent_node_to_chunk_ids(key, list(set(chunks).union(set(exists_ent_chunks))))
         for node_to_node, stats in node_to_node_stats.items():
             self._db.set_node_to_node_stats(node_to_node[0], node_to_node[1], stats)
+        triples_to_docs = self.get_proc_triples_to_docs(openie_infos)
+        self._db.set_triples_to_docs(triples_to_docs)
         return texts
 
     def _get_query_embeddings(self, queries: List[str]) -> Dict[str, Dict[str, np.ndarray]]:
         """
-        Retrieves embeddings for given queries and updates the internal query-to-embedding mapping.
-        The method determines whether each query
-        is already present in the `self.query_to_embedding` dictionary under the keys 'triple' and 'passage'.
-        If a query is not present in
-        either, it is encoded into embeddings using the embedding model and stored.
+        Retrieves and computes embeddings for the given queries.
+
+        This function checks if the embeddings for the queries already exist in the
+        `query_to_embedding` dictionary. If not, it computes the embeddings using
+        the `_embedder` and stores them in the dictionary.
 
         Args:
-            queries List[str] | List[QuerySolution]: A list of query strings or QuerySolution objects.
-            Each query is checked for
-            its presence in the query-to-embedding mappings.
+            queries : List[str] A list of query strings for which embeddings need to be computed.
+        Returns:
+            Dict[str, Dict[str, np.ndarray]]
+                A dictionary containing the computed embeddings for the queries.
+                The keys are the query strings, and the values are the corresponding
+                embeddings.
         """
-
         all_query_strings = []
         query_to_embedding: Dict[str, Dict[str, np.ndarray]] = {
             "triple": {},
@@ -174,7 +184,6 @@ class HippoRAGImpl(BaseRAG):
             )
             for query, embedding in zip(all_query_strings, query_embeddings_for_passage):
                 query_to_embedding["passage"][query] = embedding
-            logger.debug(f"_get_query_embeddings query_to_embedding: {query_to_embedding}")
             return query_to_embedding
 
         return query_to_embedding
@@ -185,21 +194,17 @@ class HippoRAGImpl(BaseRAG):
         """
         Retrieves and computes normalized similarity scores between the given query and pre-stored fact embeddings.
 
-        Parameters:
-        query : str
-            The input query text for which similarity scores with fact embeddings
-            need to be computed.
-
+        Args:
+            query : str
+                The input query for which similarity scores should be computed.
+            query_to_embedding : Optional[Dict[str, Dict[str, np.ndarray]]], optional
+                A dictionary containing pre-computed embeddings for the queries.
+                If not provided, the function will compute the embeddings for the query.
+            top_k : int, optional
+                The number of top similar facts to retrieve. Defaults to 10.
         Returns:
-        numpy.ndarray
-            A normalized array of similarity scores between the query and fact
-            embeddings. The shape of the array is determined by the number of
-            facts.
-
-        Raises:
-        KeyError
-            If no embedding is found for the provided query in the stored query
-            embeddings dictionary.
+            List[Tuple[Document, float]]
+                A list of tuples, where each tuple contains a Document object and its corresponding
         """
         query_embedding: np.ndarray = (
             query_to_embedding["triple"].get(query, np.array([]))
@@ -216,25 +221,25 @@ class HippoRAGImpl(BaseRAG):
         self, query: str, query_fact_scores: List[Tuple[Document, float]], lang="en", link_top_k=5
     ) -> List[Tuple[Document, float]]:
         """
+        Reranks the facts based on their relevance to the query using a DSPy model.
 
         Args:
-
+            query : str
+                The input query for which the facts need to be reranked.
+            query_fact_scores : List[Tuple[Document, float]]
+                A list of tuples containing Document objects and their corresponding scores.
+            lang : str, optional
+                The language of the query. Defaults to "en".
+            link_top_k : int, optional
+                The number of top facts to consider for reranking. Defaults to 5.
         Returns:
-            top_k_fact_indicies:
-            top_k_facts:
-            rerank_log (dict): {'facts_before_rerank': candidate_facts, 'facts_after_rerank': top_k_facts}
-                - candidate_facts (list): list of link_top_k facts (each fact is a relation triple in tuple data type).
-                - top_k_facts:
-
-
+            List[Tuple[Document, float]]
+                A list of tuples containing the reranked Document objects and their corresponding scores.
         """
         # load args
 
         docs: List[Tuple[Document, float]] = sorted(query_fact_scores, key=lambda x: x[1], reverse=True)
-        logger.debug(f"rerank_facts Top {link_top_k} facts: {docs}")
-        # candidate_facts = [
-        #     eval(doc.content) for doc, _ in query_fact_scores
-        # ]  # list of link_top_k facts (each fact is a relation triple in tuple data type)
+
         fact_before_filter = {"fact": [list(eval(doc.content)) for doc, _ in docs]}
         logger.debug(f"rerank_facts fact_before_filter: {fact_before_filter}")
         input = {"question": query, "fact_before_filter": json.dumps(fact_before_filter, ensure_ascii=False)}
@@ -260,30 +265,20 @@ class HippoRAGImpl(BaseRAG):
         return top_k_facts
 
     def dense_passage_retrieval(
-        self, query: str, query_to_embedding: Dict[str, Dict[str, np.ndarray]], top_k: int = 10
+        self, query: str, query_to_embedding: Dict[str, Dict[str, np.ndarray]], top_k: int = 20
     ) -> List[Tuple[Document, float]]:
         """
-        Conduct dense passage retrieval to find relevant documents for a query.
-
-        This function processes a given query using a pre-trained embedding model
-        to generate query embeddings. The similarity scores between the query
-        embedding and passage embeddings are computed using dot product, followed
-        by score normalization. Finally, the function ranks the documents based
-        on their similarity scores and returns the ranked document identifiers
-        and their scores.
-
-        Parameters
-        ----------
-        query : str
-            The input query for which relevant passages should be retrieved.
-
-        Returns
-        -------
-        tuple : Tuple[np.ndarray, np.ndarray]
-            A tuple containing two elements:
-            - A list of sorted document identifiers based on their relevance scores.
-            - A numpy array of the normalized similarity scores for the corresponding
-              documents.
+        Performs dense passage retrieval using the provided query and its corresponding embeddings.
+        Args:
+            query : str
+                The input query for which dense passage retrieval needs to be performed.
+            query_to_embedding : Dict[str, Dict[str, np.ndarray]]
+                A dictionary containing pre-computed embeddings for the queries.
+            top_k : int, optional
+                The number of top passages to retrieve. Defaults to 10.
+        Returns:
+            List[Tuple[Document, float]]
+                A list of tuples, where each tuple contains a Document object and its corresponding score.
         """
         logger.debug(f"dense_passage_retrieval query: {query},top_k: {top_k}")
         query_embedding: np.ndarray = query_to_embedding["passage"].get(query, np.array([]))
@@ -304,29 +299,26 @@ class HippoRAGImpl(BaseRAG):
         top_k: int = 10,
     ) -> Dict[str, float]:
         """
-        Computes document scores based on fact-based similarity and relevance using personalized
-        PageRank (PPR) and dense retrieval models. This function combines the signal from the relevant
-        facts identified with passage similarity and graph-based search for enhanced result ranking.
-
-        Parameters:
-            query (str): The input query string for which similarity and relevance computations
-                need to be performed.
-            link_top_k (int): The number of top phrases to include from the linking score map for
-                downstream processing.
-            query_fact_scores (np.ndarray): An array of scores representing fact-query similarity
-                for each of the provided facts.
-            top_k_facts (List[Tuple]): A list of top-ranked facts, where each fact is represented
-                as a tuple of its subject, predicate, and object.
-            top_k_fact_indices (List[str]): Corresponding indices or identifiers for the top-ranked
-                facts in the query_fact_scores array.
-            passage_node_weight (float): Default weight to scale passage scores in the graph.
-
+        Performs graph search using the fact entities and passage nodes to compute personalized PageRank scores.
+        Args:
+            query : str
+                The input query for which graph search needs to be performed.
+            query_to_embedding : Dict[str, Dict[str, np.ndarray]]
+                A dictionary containing pre-computed embeddings for the queries.
+            link_top_k : int
+                The number of top facts to consider for graph search.
+            top_k_facts : List[Tuple[Document, float]]
+                A list of tuples containing Document objects and their corresponding scores.
+            passage_node_weight : float, optional
+                The weight assigned to passage nodes. Defaults to 0.05.
+            damping : float, optional
+                Damping factor for the PageRank algorithm. Defaults to 0.5.
+            top_k : int, optional
+                The number of top nodes to retrieve. Defaults to 10.
         Returns:
-            Tuple[np.ndarray, np.ndarray]: A tuple containing two arrays:
-                - The first array corresponds to document IDs sorted based on their scores.
-                - The second array consists of the PPR scores associated with the sorted document IDs.
+            Dict[str, float]
+                A dictionary containing the personalized PageRank scores for the nodes.
         """
-        # Assigning phrase weights based on selected facts from previous steps.
         linking_score_map: Dict[
             str, float
         ] = {}  # from phrase to the average scores of the facts that contain the phrase
@@ -344,7 +336,7 @@ class HippoRAGImpl(BaseRAG):
             phrase_keys.append(compute_mdhash_id(content=subject_phrase, prefix=self._entity_prefix))
             phrase_keys.append(compute_mdhash_id(content=object_phrase, prefix=self._entity_prefix))
         phrase_keys = list(set(phrase_keys))
-        nodes = self._graph_store.select_vertices(name_in=phrase_keys)
+        nodes = self._graph_store.select_vertices(dict(name_in=phrase_keys))
         node_id_to_phrase = {node["name"]: node for node in nodes}
 
         for doc, fact_score in top_k_facts:
@@ -372,7 +364,7 @@ class HippoRAGImpl(BaseRAG):
         if link_top_k:
             phrase_weights, linking_score_map = self.get_top_k_weights(link_top_k, phrase_weights, linking_score_map)
         logger.debug(f"linking_score_map: {linking_score_map}, phrase_weights: {phrase_weights}")
-        passages = self.dense_passage_retrieval(query, query_to_embedding, self._graph_store.vertices_count())
+        passages = self.dense_passage_retrieval(query, query_to_embedding)
         logger.debug(f"dense_passage_retrieval passages: {len(passages)}:{passages}")
         sorted_passages = sorted(passages, key=lambda x: x[1], reverse=True)
         dpr_doc_scores = [doc[1] for doc in sorted_passages]
@@ -399,7 +391,9 @@ class HippoRAGImpl(BaseRAG):
 
         # Running PPR algorithm based on the passage and phrase weights previously assigned
         logger.debug(f"graph_search_with_fact_entities node_weights: {node_weights}: {len(node_weights)}")
-        ppr_sorted_doc_scores = self.run_ppr(node_weights, damping=damping, top_k=top_k)
+        ppr_sorted_doc_scores = self.run_ppr(
+            {k: v.astype(float) for k, v in node_weights.items()}, damping=damping, top_k=top_k
+        )
 
         return ppr_sorted_doc_scores
 
@@ -407,16 +401,19 @@ class HippoRAGImpl(BaseRAG):
         self, link_top_k: int, all_phrase_weights: Dict[str, np.float64], linking_score_map: Dict[str, float]
     ) -> Tuple[Dict[str, np.float64], Dict[str, float]]:
         """
-        Filters all_phrase_weights to retain only the weights for the top-ranked phrases in linking_score_map.
-        Non-selected phrases are reset to 0.0.
-
+        Filters the phrase weights and linking scores to retain only the top-k phrases.
         Args:
-            link_top_k (int): Number of top-ranked phrases to retain.
-            all_phrase_weights (Dict[str, np.float64]): A dictionary mapping phrase IDs to their weights.
-            linking_score_map (Dict[str, float]): A mapping of phrase content to its linking score.
-
+            link_top_k : int
+                The number of top phrases to retain.
+            all_phrase_weights : Dict[str, np.float64]
+                A dictionary containing the weights of all phrases.
+            linking_score_map : Dict[str, float]
+                A dictionary containing the linking scores for each phrase.
         Returns:
-            Tuple[Dict[str, np.float64], Dict[str, float]]: Filtered weights and linking scores.
+            Tuple[Dict[str, np.float64], Dict[str, float]]
+                A tuple containing two dictionaries:
+                - The filtered phrase weights for the top-k phrases.
+                - The linking scores for the top-k phrases.
         """
         # Step 1: 选择 top-k 短语
         linking_score_map = dict(sorted(linking_score_map.items(), key=lambda x: x[1], reverse=True)[:link_top_k])
@@ -428,7 +425,7 @@ class HippoRAGImpl(BaseRAG):
         )
 
         # Step 3: 查询图中实际存在的短语 ID
-        top_k_nodes = self._graph_store.select_vertices(name_in=list(top_k_phrase_ids))
+        top_k_nodes = self._graph_store.select_vertices(dict(name_in=list(top_k_phrase_ids)))
         top_k_phrase_ids_in_graph = [node["name"] for node in top_k_nodes]
 
         # Step 4: 清除未选中短语的权重
@@ -445,56 +442,34 @@ class HippoRAGImpl(BaseRAG):
 
     def retrieve(self, queries: List[str], retrieve_top_k=10, lang="en", link_top_k=5) -> List[RetrieveResultItem]:
         """
-        Performs retrieval using the HippoRAG 2 framework, which consists of several steps:
-        - Fact Retrieval
-        - Recognition Memory for improved fact selection
-        - Dense passage scoring
-        - Personalized PageRank based re-ranking
-
-        Parameters:
-            queries: List[str]
-                A list of query strings for which documents are to be retrieved.
-            num_to_retrieve: int, optional
-                The maximum number of documents to retrieve for each query. If not specified, defaults to
-                the `retrieval_top_k` value defined in the global configuration.
-            gold_docs: List[List[str]], optional
-                A list of lists containing gold-standard documents corresponding to each query. Required
-                if retrieval performance evaluation is enabled (`do_eval_retrieval` in global configuration).
-
+        Retrieves documents based on the provided queries using a combination of dense
+        passage retrieval and graph search.
+        Args:
+            queries : List[str]
+                A list of query strings for which documents need to be retrieved.
+            retrieve_top_k : int, optional
+                The number of top documents to retrieve. Defaults to 10.
+            lang : str, optional
+                The language of the queries. Defaults to "en".
+            link_top_k : int, optional
+                The number of top facts to consider for graph search. Defaults to 5.
         Returns:
-            List[QuerySolution] or (List[QuerySolution], Dict)
-                If retrieval performance evaluation is not enabled, returns a list of QuerySolution objects,
-                each containing
-                the retrieved documents and their scores for the corresponding query.
-                If evaluation is enabled, also returns
-                a dictionary containing the evaluation metrics computed over the retrieved results.
-
-        Notes
-        -----
-        - Long queries with no relevant facts after reranking will default to results from dense passage retrieval.
+            List[RetrieveResultItem]
+                A list of RetrieveResultItem objects containing the retrieved documents and their corresponding scores.
         """
-        logger.info("Starting retrieval process...")
-
-        # if not self._ready_to_retrieve:
-        #     self.prepare_retrieval_objects()
-
         query_to_embedding = self._get_query_embeddings(queries)
         top_k_docs: List[RetrieveResultItem] = []
         for q_idx, query in tqdm(enumerate(queries), desc="Retrieving", total=len(queries)):
             # rerank_start = time.time()
             query_fact_scores = self._get_fact_scores(query, query_to_embedding)
-            logger.debug(f"Query: {query}, Fact scores: {query_fact_scores}")
             top_k_facts = self.rerank_facts(query, query_fact_scores, lang=lang, link_top_k=link_top_k)
-            logger.debug(f"retrieve Top {self.config.hipporag.linking_top_k} facts: {top_k_facts}")
             # rerank_end = time.time()
 
             # self.rerank_time += rerank_end - rerank_start
 
             if len(top_k_facts) == 0:
                 logger.info("No facts found after reranking, return DPR results")
-                sorted_doc_scores = self.dense_passage_retrieval(
-                    query, query_to_embedding, top_k=self._graph_store.vertices_count()
-                )
+                sorted_doc_scores = self.dense_passage_retrieval(query, query_to_embedding, top_k=retrieve_top_k)
                 top_k_docs.extend([RetrieveResultItem(document=d, score=s, query=query) for d, s in sorted_doc_scores])
             else:
                 sorted_doc_key_scores = self.graph_search_with_fact_entities(
@@ -506,7 +481,6 @@ class HippoRAGImpl(BaseRAG):
                     top_k=retrieve_top_k,
                 )
                 docs_ids = list(sorted_doc_key_scores.keys())
-                logger.debug(f"docs_ids: {docs_ids}")
                 docs = self._embedd_store.get_by_ids(docs_ids)
                 top_k_docs.extend(
                     [
@@ -514,55 +488,97 @@ class HippoRAGImpl(BaseRAG):
                         for doc in docs
                     ]
                 )
-        return top_k_docs
+        return sorted(top_k_docs, key=lambda x: x.score, reverse=True)
 
-    def run_ppr(self, node_weights: Dict[str, np.float64], damping: float = 0.5, top_k: int = 10) -> Dict[str, float]:
+    def get_proc_triples_to_docs(self, all_openie_info: List[OpenIEInfo]) -> Dict[str, Set[str]]:
         """
-        Runs Personalized PageRank (PPR) on a graph and computes relevance scores for
-        nodes corresponding to document passages. The method utilizes a damping
-        factor for teleportation during rank computation and can take a reset
-        probability array to influence the starting state of the computation.
+        Processes the extracted triples from OpenIE information and maps them to their corresponding document IDs.
 
-        Parameters:
-            reset_prob (np.ndarray): A 1-dimensional array specifying the reset
-                probability distribution for each node. The array must have a size
-                equal to the number of nodes in the graph. NaNs or negative values
-                within the array are replaced with zeros.
-            damping (float): A scalar specifying the damping factor for the
-                computation. Defaults to 0.5 if not provided or set to `None`.
-
+        Args:
+            all_openie_info : List[OpenIEInfo]
+                A list of OpenIEInfo objects containing extracted triples and their corresponding document IDs.
         Returns:
-            Tuple[np.ndarray, np.ndarray]: A tuple containing two numpy arrays. The
-                first array represents the sorted node IDs of document passages based
-                on their relevance scores in descending order. The second array
-                contains the corresponding relevance scores of each document passage
-                in the same order.
+            Dict[str, Set[str]]
+                A dictionary mapping processed triples (as strings) to sets of document IDs.
+        """
+        proc_triples_to_docs: Dict[str, Set[str]] = {}
+
+        for doc in all_openie_info:
+            triples = self._flatten_facts([[tuple(t) for t in doc.extracted_triples]])
+            for triple in triples:
+                if len(triple) == 3:
+                    # proc_triple = tuple(text_processing(list(triple)))
+                    proc_triples_to_docs[str(triple)] = proc_triples_to_docs.get(str(triple), set()).union(
+                        set([doc["idx"]])
+                    )
+        return proc_triples_to_docs
+
+    def delete(self, docs_to_delete: List[str]):
+        """
+        Deletes documents and their associated triples from the database, embedding store, and graph store.
+        Args:
+            docs_to_delete : List[str]
+                A list of document IDs to be deleted from the database, embedding store, and graph store.
+        Returns:
+            None
+        """
+        triples_to_delete: List[str] = []
+        entities_to_delete: List[str] = []
+        docs_ids_to_triples = []
+        openie_infos = self._db.get_openie_info(docs_to_delete)
+        docs_to_delete = [doc.idx for doc in openie_infos]
+        chunk_ids_triple_to_delete: Dict[str, List[Tuple[str, str, str]]] = {}
+        for doc in openie_infos:
+            chunk_ids_triple_to_delete[doc.idx] = [tuple(t) for t in doc.extracted_triples]
+            for triple in doc.extracted_triples:
+                triple_tuple = tuple(triple)
+                docs_ids = set(self._db.get_docs_from_triples(triple_tuple) or [])
+                if not docs_ids:
+                    continue
+                docs_ids_to_triples.extend(list(docs_ids))
+                # Only delete triples that are exclusively used by documents being deleted
+                remaining_docs = docs_ids.difference(set(docs_to_delete))
+                if not remaining_docs:
+                    entities, _ = self._extract_entity_nodes([triple_tuple])
+                    # Process entities for potential deletion
+                    for entity in entities:
+                        entity_id = compute_mdhash_id(content=entity, prefix=self._entity_prefix)
+                        entity_docs = set(self._db.get_ent_node_to_chunk_ids(entity_id) or [])
+                        # Only delete entities that are exclusively used by documents being deleted
+                        if entity_docs and not entity_docs.difference(set(docs_to_delete)):
+                            entities_to_delete.append(entity_id)
+                    # Mark triple for deletion
+                    triples_to_delete.append(compute_mdhash_id(content=str(triple_tuple), prefix=self._fact_prefix))
+        embedding_ids_to_delete = triples_to_delete + entities_to_delete + list(chunk_ids_triple_to_delete.keys())
+        self._embedd_store.delete(embedding_ids_to_delete)
+        graph_vertex_ids_to_delete = entities_to_delete + entities_to_delete
+        self._graph_store.delete_vertices(graph_vertex_ids_to_delete)
+        self._db.delete_openie_info(docs_to_delete)
+        self._db.delete_ent_node_to_chunk_ids(entities_to_delete)
+        self._db.delete_node_to_node_stats(triples_to_delete)
+        self._db.delete_triples_to_docs(triples_to_delete)
+
+    def run_ppr(self, node_weights: Dict[str, float], damping: float = 0.5, top_k: int = 10) -> Dict[str, float]:
+        """
+        Computes personalized PageRank scores for the given nodes in the graph.
+        Args:
+            node_weights : Dict[str, float]
+                A dictionary mapping node IDs to their respective weights.
+            damping : float, optional
+                Damping factor for the PageRank algorithm. Defaults to 0.5.
+            top_k : int, optional
+                The number of top nodes to retrieve. Defaults to 10.
+        Returns:
+            Dict[str, float]
+                A dictionary containing the personalized PageRank scores for the nodes.
         """
 
         if damping is None:
             damping = 0.5  # for potential compatibilityp
-        # reset_prob = np.array(list(node_weights.values()))
-        reset_prob = np.zeros(self._graph_store.vertices_count())
-        # logger.debug(f"Reset probability: {np_reset_prob} and vertices size:{np_reset_prob.shape[0]}")
-        vs = self._graph_store.select_vertices(name_in=list(node_weights.keys()))
 
-        node_name_to_vertex_idx = {v["name"]: v["index"] for v in vs}
-        for node_name, node_weight in node_weights.items():
-            if node_name in node_name_to_vertex_idx:
-                vertex_idx = node_name_to_vertex_idx[node_name]
-                reset_prob[vertex_idx] = node_weight
-        # reset_prob = np.array(reset_prob)  # Ensure reset_prob is a NumPy array
-        np_reset_prob = np.where(np.isnan(reset_prob) | (reset_prob < 0.0), 0, reset_prob)
-
-        logger.debug(f"node_name_to_vertex_idx: {node_name_to_vertex_idx}:{reset_prob.tolist()}")
         pagerank_scores = self._graph_store.personalized_pagerank(
-            vertices=range(self._graph_store.vertices_count()),
+            vertices_with_weight=node_weights,
             damping=damping,
-            directed=False,
-            weights="weight",
-            reset=np_reset_prob,
-            arpack_options=None,
-            implementation="prpack",
             top_k=top_k,  # Ensure top_k is passed correctly here
         )
         # filter doc- prefix
@@ -579,7 +595,7 @@ class HippoRAGImpl(BaseRAG):
         """
 
         self._add_new_nodes(entities, passages)
-        self._add_new_edges(node_to_node_stats)
+        self._graph_store.add_new_edges(node_to_node_stats)
 
         logger.info("Graph construction completed!")
 
@@ -591,12 +607,28 @@ class HippoRAGImpl(BaseRAG):
         logger.info("Saving graph completed!")
 
     def init(self):
+        """
+        Initializes the graph and embedding stores.
+        This method is responsible for setting up the necessary components
+        required for the graph and embedding functionalities.
+        It initializes the embedder, database, embedding store, and graph store.
+        This method should be called before using the graph and embedding functionalities.
+        It ensures that all necessary components are properly initialized and ready for use.
+        """
         self._embedder.init()
         self._db.init()
         self._embedd_store.init()
         self._graph_store.init()
 
     def _flatten_facts(self, chunk_triples: List[List[Tuple[str, str, str]]]) -> List[Tuple[str, ...]]:
+        """
+        Flattens a list of lists of triples into a single list of unique triples.
+        This method ensures that each triple is unique and represented as a tuple.
+        Args:
+            chunk_triples (List[List[Tuple[str, str, str]]]): A list of lists of triples.
+        Returns:
+            List[Tuple[str, ...]]: A list of unique triples represented as tuples.
+        """
         seen = set()
         graph_triples = []
 
@@ -634,7 +666,21 @@ class HippoRAGImpl(BaseRAG):
         self, entity_nodes: List[str], prefix: str, metadata: Optional[Dict[str, str]] = None
     ) -> List[Document]:
         """
-        Stores embeddings for entity nodes in the graph.
+        Adds embeddings for the given entity nodes to the embedding store.
+
+        This method computes the hash IDs for the entity nodes, checks if they already exist in the
+        embedding store, and if not, encodes the nodes and adds them to the store.
+
+        Args:
+            entity_nodes : List[str]
+                A list of entity nodes to be added to the embedding store.
+            prefix : str
+                The prefix used for computing hash IDs for the entity nodes.
+            metadata : Optional[Dict[str, str]], optional
+                Additional metadata to be associated with the documents. Defaults to None.
+        Returns:
+            List[Document]
+                A list of Document objects representing the added embeddings.
         """
         # graph_nodes, triple_entities = self.extract_graph_nodes(triples)
         nodes_dict = {}
@@ -666,10 +712,27 @@ class HippoRAGImpl(BaseRAG):
     def _add_fact_edges(
         self, new_docs: List[Document], chunk_triples: Dict[str, List[Tuple[str, str, str]]]
     ) -> Tuple[Dict[str, List[str]], Dict[Tuple[str, str], float]]:
+        """
+        Adds edges between entity nodes and chunk nodes in the graph.
+
+        This method is responsible for iterating through a list of chunk identifiers
+        and their corresponding triple entities. It calculates and adds new edges
+        between the entity nodes (defined by the computed unique hash IDs of triple entities)
+        and the chunk nodes (defined by the chunk identifiers). The method also
+        updates the node-to-node statistics map and keeps track of the chunk IDs
+        associated with each entity node.
+
+        Args:
+            new_docs : List[Document]
+                A list of Document objects representing the new documents to be added.
+            chunk_triples : Dict[str, List[Tuple[str, str, str]]]
+                A dictionary mapping chunk identifiers to lists of triples (subject, predicate, object).
+        Returns:
+            Tuple[Dict[str, List[str]], Dict[Tuple[str, str], float]]
+        """
         node_to_node_stats: Dict[Tuple[str, str], float] = {}
         ent_node_to_chunk_ids: Dict[str, List[str]] = {}
         for doc in tqdm(new_docs):
-            logger.debug(f"add_fact_edges Processing doc: {doc.uid}:{chunk_triples}")
             entities_in_chunk = set()
             triples = chunk_triples[doc.uid]
             chunk_key = doc.uid
@@ -722,12 +785,26 @@ class HippoRAGImpl(BaseRAG):
                     node_key = compute_mdhash_id(chunk_ent, prefix=self._entity_prefix)
                     node_to_node_stats[(doc.uid, node_key)] = 1.0
             num_new_chunks += 1
-        print(f"After add_passage_edges node_to_node_stats: {node_to_node_stats}")
         return num_new_chunks
 
     def _add_synonymy_edges(
         self, query_docs: List[Document], target_docs: List[Document], node_to_node_stats: Dict[Tuple[str, str], float]
     ):
+        """
+        Adds synonymy edges between query and target documents based on their embeddings.
+        This method retrieves the k-nearest neighbors for each query document and
+        establishes synonymy edges based on the similarity scores.
+        It also updates the node-to-node statistics map with the similarity scores.
+        Args:
+            query_docs : List[Document]
+                A list of query documents for which synonymy edges need to be added.
+            target_docs : List[Document]
+                A list of target documents to establish synonymy edges with.
+            node_to_node_stats : Dict[Tuple[str, str], float]
+                A dictionary mapping pairs of node keys to their corresponding similarity scores.
+        Returns:
+            None
+        """
         query_node_key2knn_node_keys = self._embedd_store.knn(
             query_docs=query_docs,
             target_docs=target_docs,
@@ -770,22 +847,27 @@ class HippoRAGImpl(BaseRAG):
         self, entities: List[Document], passages: List[Document]
     ) -> Tuple[List[Document], List[Document]]:
         """
-        Adds new nodes to the graph from entity and passage embedding stores based on their attributes.
-
-        This method identifies and adds new nodes to the graph by comparing existing nodes
-        in the graph and nodes retrieved from the entity embedding store and the passage
-        embedding store. The method checks attributes and ensures no duplicates are added.
-        New nodes are prepared and added in bulk to optimize graph updates.
+        Adds new nodes to the graph for the given entities and passages.
+        This method checks for existing nodes in the graph and adds only the new ones.
+        It also updates the node-to-rows mapping for the new nodes.
+        Args:
+            entities : List[Document]
+                A list of entity documents to be added as nodes in the graph.
+            passages : List[Document]
+                A list of passage documents to be added as nodes in the graph.
+        Returns:
+            Tuple[List[Document], List[Document]]
+                A tuple containing two lists: the first list contains the new entity documents,
+                and the second list contains the new passage documents.
         """
-
         docs = copy.deepcopy(entities)
         docs.extend(passages)
 
         node_to_rows_map = {doc.uid: doc.model_dump() for doc in docs}
         node_ids = list(node_to_rows_map.keys())
-        existing_nodes: List[Dict[str, Any]] = self._graph_store.select_vertices(name_in=node_ids)
+        existing_nodes: List[Dict[str, Any]] = self._graph_store.select_vertices(dict(name_in=node_ids))
         existing_ids = [node["name"] for node in existing_nodes]
-        new_nodes: Dict[str, List[Any]] = {}
+        new_nodes: List[Dict[str, Any]] = []
         new_node_ids = set(node_ids) - set(existing_ids)
         new_pasages: List[Document] = []
         new_entities: List[Document] = []
@@ -798,52 +880,8 @@ class HippoRAGImpl(BaseRAG):
         for node_id in new_node_ids:
             node = node_to_rows_map[node_id]
             node["name"] = node_id
-            for k, v in node.items():
-                if k not in new_nodes:
-                    new_nodes[k] = []
-                new_nodes[k].append(v)
+            new_nodes.append(node)
         if len(new_nodes) > 0:
-            self._graph_store.add_vertices(n=len(next(iter(new_nodes.values()))), attributes=new_nodes)
-        logger.info(f"Added {len(new_nodes)} new nodes to the graph.")
+            self._graph_store.add_vertices(new_nodes)
+            logger.info(f"Added {len(new_nodes)} new nodes to the graph.")
         return new_entities, new_pasages
-
-    def _add_new_edges(self, node_to_node_stats: Dict[Tuple[str, str], float]):
-        """
-        Processes edges from `node_to_node_stats` to add them into a graph object while
-        managing adjacency lists, validating edges, and logging invalid edge cases.
-        """
-
-        # 初始化邻接表（若后续需要使用）
-        # self.graph_adj_list: DefaultDict[str, Dict[str, float]] = defaultdict(dict)
-        # self.graph_inverse_adj_list: DefaultDict[str, Dict[str, float]] = defaultdict(dict)
-
-        edge_source_node_keys = []
-        edge_target_node_keys = []
-        edge_metadata = []
-        logger.debug(f"Adding edges to graph with {node_to_node_stats} edges.")
-        for edge, weight in node_to_node_stats.items():
-            if edge[0] == edge[1]:
-                continue
-            edge_source_node_keys.append(edge[0])
-            edge_target_node_keys.append(edge[1])
-            edge_metadata.append({"weight": weight})
-
-        valid_edges: List[Tuple[str, str]] = []
-        valid_weights: List[float] = []
-
-        source_nodes = self._graph_store.select_vertices(name_in=edge_source_node_keys)
-        target_nodes = self._graph_store.select_vertices(name_in=edge_target_node_keys)
-        logger.info(
-            f"Found {source_nodes} source nodes from {edge_source_node_keys} and {target_nodes} \
-                    target nodes from {edge_target_node_keys}."
-        )
-        existing_node_ids = set([node["name"] for node in source_nodes + target_nodes])
-
-        for source_node_id, target_node_id, edge_d in zip(edge_source_node_keys, edge_target_node_keys, edge_metadata):
-            if source_node_id in existing_node_ids and target_node_id in existing_node_ids:
-                valid_edges.append((source_node_id, target_node_id))
-                valid_weights.append(edge_d["weight"])
-            else:
-                logger.warning(f"Edge {source_node_id} -> {target_node_id} is not valid.")
-        logger.info(f"Adding {valid_edges} edges to the graph.")
-        self._graph_store.add_edges(valid_edges, valid_weights)

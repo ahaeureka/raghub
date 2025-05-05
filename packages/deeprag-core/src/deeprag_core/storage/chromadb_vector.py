@@ -3,23 +3,22 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from deeprag_core.embedding.base_embedding import BaseEmbedding
 from deeprag_core.schemas.document import Document
+from deeprag_core.storage.embedding_adapter import LangchainEmbeddings
 from deeprag_core.storage.vector import VectorStorage
 from deeprag_core.utils.file.project import ProjectHelper
-from langchain_core.embeddings import Embeddings
 from loguru import logger
 
+# class LangchainEmbeddings(Embeddings):
+#     def __init__(self, embedder: BaseEmbedding):
+#         self.embedder = embedder
 
-class LangchainEmbeddings(Embeddings):
-    def __init__(self, embedder: BaseEmbedding):
-        self.embedder = embedder
+#     def embed_documents(self, documents: List[str]) -> List[List[float]]:
+#         ret = self.embedder.encode(documents).tolist()
+#         return ret
 
-    def embed_documents(self, documents: List[str]) -> List[List[float]]:
-        ret = self.embedder.encode(documents).tolist()
-        return ret
-
-    def embed_query(self, query: str) -> List[float]:
-        ret = self.embedder.encode_query([query]).tolist()
-        return ret
+#     def embed_query(self, query: str) -> List[float]:
+#         ret = self.embedder.encode_query([query]).tolist()
+#         return ret
 
 
 class ChromaDBVectorStorage(VectorStorage):
@@ -89,6 +88,13 @@ class ChromaDBVectorStorage(VectorStorage):
             self.init()
         results = self._client.get(ids=ids, include=["documents", "metadatas", "embeddings"])
         return self._build_docs(results)
+
+    def delete(self, ids: List[str]) -> bool:
+        # Implement the logic to delete documents by their IDs from ChromaDB
+        if not self._client:
+            self.init()
+        self._client.delete(ids=ids)
+        return True
 
     def select_on_metadata(self, metadata_filter: Dict[str, Any]) -> List[Document]:
         # Implement the logic to retrieve documents by metadata filter from ChromaDB

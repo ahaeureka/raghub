@@ -1,7 +1,9 @@
 from abc import abstractmethod
+from typing import Any, List, Type
 
 from deeprag_core.utils.class_meta import SingletonRegisterMeta
-from sqlmodel import SQLModel
+from sqlalchemy import Executable
+from sqlmodel import SQLModel, inspect
 
 
 class SQLStorage(metaclass=SingletonRegisterMeta):
@@ -16,20 +18,20 @@ class SQLStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get(self, key: str) -> SQLModel:
+    def get(self, keys: List[str], model_cls: type[SQLModel]) -> List[SQLModel]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     # @abstractmethod
     # def update(self, key: str, data: SQLModel):
     #     raise NotImplementedError("Subclasses should implement this method.")
 
-    # @abstractmethod
-    # def delete(self, key: str):
-    #     raise NotImplementedError("Subclasses should implement this method.")
+    @abstractmethod
+    def delete(self, keys: List[str], model_cls: type[SQLModel]):
+        raise NotImplementedError("Subclasses should implement this method.")
 
-    # @abstractmethod
-    # def exec(self, statement: Executable):
-    #     raise NotImplementedError("Subclasses should implement this method.")
+    @abstractmethod
+    def exec(self, statement: Executable) -> Any:
+        raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
     def get_engine(self):
@@ -38,3 +40,15 @@ class SQLStorage(metaclass=SingletonRegisterMeta):
     @abstractmethod
     def batch_add(self, data: list[SQLModel]):
         raise NotImplementedError("Subclasses should implement this `batch_add` method.")
+
+    @classmethod
+    def get_primary_key_names(cls, model_class: Type[SQLModel]) -> List[str]:
+        """
+        Get the primary key names of a SQLModel class.
+        Args:
+            model_class (Type[SQLModel]): The SQLModel class to inspect.
+        Returns:
+            List[str]: A list of primary key names.
+        """
+        mapper = inspect(model_class)
+        return [col.name for col in mapper.primary_key]
