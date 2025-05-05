@@ -1,5 +1,5 @@
 import shutil
-from deeprag_app.apps.hipporag.hipporag_impl import HippoRAGImpl
+from deeprag_app.apps.hipporag.hipporag_app import HippoRAGImpl
 from deeprag_app.config.config_models import APPConfig
 from deeprag_core.config.manager import ConfigLoader
 from deeprag_core.schemas.document import Document

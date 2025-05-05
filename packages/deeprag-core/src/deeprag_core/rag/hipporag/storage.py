@@ -1,32 +1,31 @@
 import json
 from typing import Dict, List, Optional, Set, Tuple
 
-from deeprag_app.app_schemas.hipporag_models import OpenIEInfo
-from deeprag_app.config.config_models import CacheConfig, DatabaseConfig
+from deeprag_core.schemas.hipporag_models import OpenIEInfo
 from deeprag_core.storage.cache import CacheStorage
-from deeprag_core.storage.sql import SQLStorage
+from deeprag_core.storage.structed_data import StructedDataStorage
 from deeprag_core.utils.class_meta import ClassFactory
-from sqlalchemy import Engine
 from sqlmodel import JSON, and_, cast, select
 
+from .hipporag_storage import HipporagStorage
 
-class HippoRAGStorage:
-    def __init__(self, database_config: DatabaseConfig, cache_config: CacheConfig):
-        self._database_config = database_config
-        self._engine: Optional[Engine] = None
-        self._cache_config = cache_config
+
+class HippoRAGStorage(HipporagStorage):
+    name = "hipporag_storage_sql"
+
+    def __init__(self, db_url: str, cache_dir: str, db_provider: str, cache_provider: str):
+        self._db_url = db_url
+        self._cache_dir = cache_dir
         self._cache: Optional[CacheStorage] = None
         self._cache_prefix = "deeprag:hipporag"
+        self._db_provider = db_provider
+        self._cache_provider = cache_provider
 
     def init(self):
         # Initialize storage based on the database configuration
-        self._db = ClassFactory.get_instance(
-            self._database_config.provider, SQLStorage, db_url=self._database_config.url
-        )
+        self._db = ClassFactory.get_instance(self._db_provider, StructedDataStorage, db_url=self._db_url)
         self._db.init()
-        self._cache = ClassFactory.get_instance(
-            self._cache_config.provider, CacheStorage, cache_dir=self._cache_config.cache_dir
-        )
+        self._cache = ClassFactory.get_instance(self._cache_provider, CacheStorage, cache_dir=self._cache_dir)
         self._cache.init()
 
     def save_openie_info(self, openie_info: List[OpenIEInfo]):

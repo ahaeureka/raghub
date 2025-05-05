@@ -78,6 +78,11 @@ class HippoRAGConfig(BaseParameters):
         description="Path to the dspy file",
         tags=["dspy"],
     )
+    storage_provider: str = BaseParameters.field(
+        default="hipporag_storage_sql",
+        description="Storage provider for HippoRAG",
+        tags=["storage"],
+    )
 
 
 class DatabaseConfig(BaseParameters):

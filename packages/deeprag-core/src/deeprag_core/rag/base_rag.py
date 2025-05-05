@@ -1,11 +1,12 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import List
 
 from deeprag_core.schemas.document import Document
 from deeprag_core.schemas.rag_model import RetrieveResultItem
+from deeprag_core.utils.class_meta import SingletonRegisterMeta
 
 
-class BaseRAG(ABC):
+class BaseRAG(metaclass=SingletonRegisterMeta):
     """
     Base class for Retrieval-Augmented Generation (RAG) systems.
     """

@@ -3,10 +3,9 @@ import tomllib
 from pathlib import Path
 from typing import Type, TypeVar
 
+from deeprag_core.config.base import BaseParameters, TBaseParameters
 from deeprag_core.utils.file.project import ProjectHelper
 from loguru import logger
-
-from deeprag_core.config.base import BaseParameters, TBaseParameters
 
 T = TypeVar("T", bound="BaseParameters")  # 定义一个类型变量，限定为 BaseParameters 或其子类
 

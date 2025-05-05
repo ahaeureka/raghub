@@ -6,9 +6,7 @@ from sqlalchemy import Executable
 from sqlmodel import SQLModel, inspect
 
 
-class SQLStorage(metaclass=SingletonRegisterMeta):
-    # name = None
-    # _registry: Dict[str, Type["SQLStorage"]] = {}  # 注册表
+class StructedDataStorage(metaclass=SingletonRegisterMeta):
     @abstractmethod
     def init(self):
         raise NotImplementedError("Subclasses should implement this method.")

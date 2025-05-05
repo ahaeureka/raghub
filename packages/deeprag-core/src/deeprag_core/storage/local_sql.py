@@ -2,12 +2,12 @@ import datetime
 import os
 from typing import Any, List, Optional, Type
 
-from deeprag_core.storage.sql import SQLStorage
+from deeprag_core.storage.structed_data import StructedDataStorage
 from sqlalchemy import Engine, Executable
 from sqlmodel import Session, SQLModel, create_engine, select, update
 
 
-class LocalSQLStorage(SQLStorage):
+class LocalSQLStorage(StructedDataStorage):
     name = "sqlite"
 
     def __init__(self, db_url: str):

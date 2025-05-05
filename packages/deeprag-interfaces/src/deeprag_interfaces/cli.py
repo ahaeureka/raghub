@@ -14,7 +14,7 @@ from deeprag_app.app_schemas.app import APPRunnerParams
 from deeprag_app.apps.common.app import BaseAPP
 from deeprag_app.apps.registry.register import Registry
 from deeprag_app.config.config_models import APPConfig
-from deeprag_core.utils.configure.manager import ConfigLoader
+from deeprag_core.config.manager import ConfigLoader
 from deeprag_core.utils.logger.logger import init_logging
 from pydantic_core import PydanticUndefinedType
 from typing_extensions import Annotated

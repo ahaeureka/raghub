@@ -7,10 +7,6 @@ import traceback
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
-from deeprag_app.app_schemas.hipporag_models import OpenIEInfo
-from deeprag_app.apps.hipporag.prompts import DSPyRerankPrompt, get_query_instruction
-from deeprag_app.apps.hipporag.storage import HippoRAGStorage
-from deeprag_app.config.config_models import APPConfig
 from deeprag_core.chat.base_chat import BaseChat
 from deeprag_core.embedding import BaseEmbedding
 from deeprag_core.operators.ner.ner_operator import NEROperator
@@ -19,12 +15,14 @@ from deeprag_core.operators.openie.openie_operator import OpenIEOperator
 from deeprag_core.operators.rdf.prompts import REPrompt
 from deeprag_core.operators.rdf.rdf_operator import RDFOperator
 from deeprag_core.rag.base_rag import BaseRAG
+from deeprag_core.rag.hipporag.hipporag_storage import HipporagStorage
+from deeprag_core.rag.hipporag.prompts import DSPyRerankPrompt, get_query_instruction
 from deeprag_core.schemas.document import Document
+from deeprag_core.schemas.hipporag_models import OpenIEInfo
 from deeprag_core.schemas.openie_mdoel import OpenIEModel
 from deeprag_core.schemas.rag_model import RetrieveResultItem
 from deeprag_core.storage.graph import GraphStorage
 from deeprag_core.storage.vector import VectorStorage
-from deeprag_core.utils.class_meta import ClassFactory
 from deeprag_core.utils.misc import compute_mdhash_id
 from loguru import logger
 from tqdm import tqdm
@@ -33,46 +31,46 @@ from .rerank import DSPyFilter
 
 
 class HippoRAGImpl(BaseRAG):
-    def __init__(self, config: APPConfig):
-        self._llm = ClassFactory.get_instance(
-            config.rag.llm.provider,
-            BaseChat,
-            model_name=config.rag.llm.model,
-            api_key=config.rag.llm.api_key,
-            base_url=config.rag.llm.base_url,
-            temperature=config.rag.llm.temperature,
-            timeout=config.rag.llm.timeout,
-        )  # Assuming BaseChat is imported from the correct module
+    def __init__(
+        self,
+        llm: BaseChat,
+        embbeder: BaseEmbedding,
+        embedding_store: VectorStorage,
+        graph_store: GraphStorage,
+        hipporag_store: HipporagStorage,
+        dspy_file_path: str,
+        embedding_key_prefix: str = "entity_embeddings",
+        linking_top_k: int = 15,
+        passage_node_weight: float = 0.05,
+        graph_path: Optional[str] = None,
+        synonymy_edge_topk: int = 2047,
+        synonymy_edge_query_batch_size=1000,
+        synonymy_edge_key_batch_size=1000,
+        synonymy_edge_sim_threshold=0.8,
+    ):
+        self.linking_top_k = linking_top_k
+        self.passage_node_weight = passage_node_weight
+        self.graph_path = graph_path
+        self.synonymy_edge_topk = synonymy_edge_topk
+        self.synonymy_edge_query_batch_size = synonymy_edge_query_batch_size
+        self.synonymy_edge_key_batch_size = synonymy_edge_key_batch_size
+        self.synonymy_edge_sim_threshold = synonymy_edge_sim_threshold
         ner_prompt = NERPrompt()
-        self._ner = NEROperator(ner_prompt, self._llm)
-        rdf_prompt = REPrompt()  # Assuming RDFPrompt is defined somewhere
-        self._rdf = RDFOperator(rdf_prompt, self._llm)
+        self._ner = NEROperator(ner_prompt, llm)
+        rdf_prompt = REPrompt()
+        self._rdf = RDFOperator(rdf_prompt, llm)
         self._openie = OpenIEOperator(self._ner, self._rdf)
-        dsp_prompt = DSPyRerankPrompt(best_dspy_path=config.hipporag.dspy_file_path)
+        dsp_prompt = DSPyRerankPrompt(best_dspy_path=dspy_file_path)
         super().__init__()
-        self._embedding_prefix = config.rag.embbeding.embedding_key_prefix
+        self._embedding_prefix = embedding_key_prefix
 
-        self._embedder = ClassFactory.get_instance(
-            "Embbedder",
-            BaseEmbedding,
-            model=config.rag.embbeding.model,
-            provider=config.rag.embbeding.provider,
-            batch_size=config.rag.embbeding.batch_size,
-            base_url=config.rag.embbeding.base_url,
-            api_key=config.rag.embbeding.api_key,
-            n_dims=config.rag.embbeding.n_dims,
-        )
+        self._embedder = embbeder
 
-        self._embedd_store: VectorStorage = ClassFactory.get_instance(
-            config.vector_storage.provider, VectorStorage, embedder=self._embedder, **config.vector_storage.model_dump()
-        )
-        self._graph_store: GraphStorage = ClassFactory.get_instance(
-            config.graph.provider, GraphStorage, **config.graph.model_dump()
-        )
-        config.hipporag.dspy_file_path
+        self._embedd_store: VectorStorage = embedding_store
+        self._graph_store: GraphStorage = graph_store
         self.rerank_filter = DSPyFilter(dsp_prompt, self._llm)
-        self.config = config
-        self._db = HippoRAGStorage(config.database, config.cache)
+        # self.config = config
+        self._db = hipporag_store
 
         self._ready_to_retrieve = False
         self._query_to_embedding: Dict = {"triple": {}, "passage": {}}
@@ -80,6 +78,9 @@ class HippoRAGImpl(BaseRAG):
         self._entity_prefix = "entity"
         self._fact_prefix = "fact"
         self._doc_prefix = "doc"
+
+    def create(self, name: str, description: str, idx: str):
+        pass
 
     def add_documents(self, texts: List[Document], lang="en") -> List[Document]:
         """
@@ -100,8 +101,8 @@ class HippoRAGImpl(BaseRAG):
                 doc.uid = compute_mdhash_id(doc.content, prefix=self._doc_prefix)
             doc.metadata = doc.metadata or {}
             doc.metadata["namespace"] = "passage"
+            doc.metadata["openie_idx"] = doc.uid
             ie: OpenIEModel = self._openie.extract(doc.content, lang=lang)
-
             openie_infos.append(
                 OpenIEInfo(
                     idx=doc.uid,
@@ -112,8 +113,9 @@ class HippoRAGImpl(BaseRAG):
             )
             graph_nodes, _ = self._extract_entity_nodes(ie.triples)
             chunk_triples[doc.uid] = [(item[0], item[1], item[2]) for item in ie.triples if len(item) == 3]
-
             entities_str.extend([str(node) for node in graph_nodes])
+            doc.metadata["entities"] = [compute_mdhash_id(str(node), self._entity_prefix) for node in graph_nodes]
+            doc.metadata["facts"] = [compute_mdhash_id(str(fact)) for fact in ie.triples]
             facts = self._flatten_facts([ie.triples])
             facts_str.extend([str(fact) for fact in facts])
 
@@ -440,7 +442,7 @@ class HippoRAGImpl(BaseRAG):
 
         return all_phrase_weights, linking_score_map
 
-    def retrieve(self, queries: List[str], retrieve_top_k=10, lang="en", link_top_k=5) -> List[RetrieveResultItem]:
+    def retrieve(self, queries: List[str], retrieve_top_k=10, lang="en") -> List[RetrieveResultItem]:
         """
         Retrieves documents based on the provided queries using a combination of dense
         passage retrieval and graph search.
@@ -451,8 +453,6 @@ class HippoRAGImpl(BaseRAG):
                 The number of top documents to retrieve. Defaults to 10.
             lang : str, optional
                 The language of the queries. Defaults to "en".
-            link_top_k : int, optional
-                The number of top facts to consider for graph search. Defaults to 5.
         Returns:
             List[RetrieveResultItem]
                 A list of RetrieveResultItem objects containing the retrieved documents and their corresponding scores.
@@ -462,7 +462,7 @@ class HippoRAGImpl(BaseRAG):
         for q_idx, query in tqdm(enumerate(queries), desc="Retrieving", total=len(queries)):
             # rerank_start = time.time()
             query_fact_scores = self._get_fact_scores(query, query_to_embedding)
-            top_k_facts = self.rerank_facts(query, query_fact_scores, lang=lang, link_top_k=link_top_k)
+            top_k_facts = self.rerank_facts(query, query_fact_scores, lang=lang, link_top_k=self.linking_top_k)
             # rerank_end = time.time()
 
             # self.rerank_time += rerank_end - rerank_start
@@ -475,9 +475,9 @@ class HippoRAGImpl(BaseRAG):
                 sorted_doc_key_scores = self.graph_search_with_fact_entities(
                     query=query,
                     query_to_embedding=query_to_embedding,
-                    link_top_k=self.config.hipporag.linking_top_k,
+                    link_top_k=self.linking_top_k,
                     top_k_facts=top_k_facts,
-                    passage_node_weight=self.config.hipporag.passage_node_weight,
+                    passage_node_weight=self.passage_node_weight,
                     top_k=retrieve_top_k,
                 )
                 docs_ids = list(sorted_doc_key_scores.keys())
@@ -603,7 +603,7 @@ class HippoRAGImpl(BaseRAG):
         from deeprag_core.storage.igraph_store import IGraphStore
 
         if isinstance(self._graph_store, IGraphStore):
-            self._graph_store.save(self.config.graph.graph_path)
+            self._graph_store.save(self.graph_path)
         logger.info("Saving graph completed!")
 
     def init(self):
@@ -808,9 +808,9 @@ class HippoRAGImpl(BaseRAG):
         query_node_key2knn_node_keys = self._embedd_store.knn(
             query_docs=query_docs,
             target_docs=target_docs,
-            k=self.config.hipporag.synonymy_edge_topk,
-            query_batch_size=self.config.hipporag.synonymy_edge_query_batch_size,
-            key_batch_size=self.config.hipporag.synonymy_edge_key_batch_size,
+            k=self.synonymy_edge_topk,
+            query_batch_size=self.synonymy_edge_query_batch_size,
+            key_batch_size=self.synonymy_edge_key_batch_size,
         )
         entity_id_to_row = {
             doc.uid: {"content": doc.content}  # 假设Document类有id和text属性
@@ -829,7 +829,7 @@ class HippoRAGImpl(BaseRAG):
 
                 num_nns = 0
                 for nn, score in zip(nns[0], nns[1]):
-                    if score < self.config.hipporag.synonymy_edge_sim_threshold or num_nns > 100:
+                    if score < self.synonymy_edge_sim_threshold or num_nns > 100:
                         break
 
                     nn_phrase = entity_id_to_row[nn]["content"]
