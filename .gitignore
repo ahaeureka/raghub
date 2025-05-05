@@ -205,3 +205,4 @@ results
 .venv.make
 .mypy_cache
 output/
+!examples/hipoorag/graph.png
