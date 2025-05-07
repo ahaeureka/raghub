@@ -70,7 +70,6 @@ class IGraphStore(GraphStorage):
         if not self._graph.vs.attributes():
             logger.warning("No attributes found in the graph vertices.")
             return []
-        logger.info(f"Selecting vertices with attributes: {self._graph.vs.attributes()} with {attrs}")
         attrs["label"] = label
         ret: ig.VertexSeq = self._graph.vs.select(**attrs)
 
@@ -192,7 +191,6 @@ class IGraphStore(GraphStorage):
         edge_source_node_keys = []
         edge_target_node_keys = []
         edge_metadata = []
-        logger.debug(f"Adding edges to graph with {node_to_node_stats} edges.")
         for edge, weight in node_to_node_stats.items():
             if edge[0] == edge[1]:
                 continue
@@ -205,10 +203,7 @@ class IGraphStore(GraphStorage):
 
         source_nodes = self.select_vertices(label, attrs=dict(name_in=edge_source_node_keys))
         target_nodes = self.select_vertices(label, attrs=dict(name_in=edge_target_node_keys))
-        logger.info(
-            f"Found {source_nodes} source nodes from {edge_source_node_keys} and {target_nodes} \
-                    target nodes from {edge_target_node_keys}."
-        )
+
         existing_node_ids = set([node["name"] for node in source_nodes + target_nodes])
 
         for source_node_id, target_node_id, edge_d in zip(edge_source_node_keys, edge_target_node_keys, edge_metadata):
@@ -217,5 +212,5 @@ class IGraphStore(GraphStorage):
                 valid_weights.append(edge_d["weight"])
             else:
                 logger.warning(f"Edge {source_node_id} -> {target_node_id} is not valid.")
-        logger.debug(f"Adding {valid_edges} edges to the graph.")
+        logger.debug(f"Adding {len(valid_edges)} edges to the graph.")
         self._add_edges(valid_edges, valid_weights)

@@ -137,6 +137,15 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
+    def delete_nodes_cache(self, label: str, node_keys: List[str]):
+        """
+        Delete the node cache for a given node key.
+        Args:
+            node_key (str): The key of the node to be deleted.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
     def delete_triples_to_docs(self, label: str, triples: List[Tuple[str, str, str]]):
         """
         Delete the mapping of triples to documents from the cache.

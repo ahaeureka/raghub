@@ -84,6 +84,8 @@ class HippoRAG(BaseApp):
         Adds documents to the vector store and graph store.
 
         Args:
+            unique_name : str
+                The unique name for the index to which documents will be added.
             texts : List[Document]
                 A list of Document objects to be added to the vector store and graph store.
             lang : str
@@ -96,6 +98,8 @@ class HippoRAG(BaseApp):
         Retrieves documents based on the provided queries using a combination of dense
         passage retrieval and graph search.
         Args:
+            unique_name : str
+                The unique name for the index to be used for retrieval.
             queries : List[str]
                 A list of query strings for which documents need to be retrieved.
             retrieve_top_k : int, optional
@@ -115,16 +119,18 @@ class HippoRAG(BaseApp):
             lang=lang,
         )
 
-    def delete(self, docs_to_delete: List[str]):
+    def delete(self, index_name: str, docs_to_delete: List[str]):
         """
         Deletes documents and their associated triples from the database, embedding store, and graph store.
         Args:
+            index_name : str
+                The unique name for the index from which documents will be deleted.
             docs_to_delete : List[str]
                 A list of document IDs to be deleted from the database, embedding store, and graph store.
         Returns:
             None
         """
-        self.hipporag.delete(docs_to_delete)
+        self.hipporag.delete(index_name, docs_to_delete)
 
     def init(self):
         """

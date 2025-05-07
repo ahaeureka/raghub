@@ -69,6 +69,14 @@ class HippoRAGLocalStorage(HipporagStorage):
         key = self.get_node_to_node_stats_cache_key(label, from_node_key, to_node_key)
         self._cache.set(key, stats)
 
+    def delete_nodes_cache(self, label: str, node_keys: List[str]):
+        if not self._cache:
+            raise ValueError("Cache is not initialized")
+        # Delete the node cache from the cache
+        for node_key in node_keys:
+            key = f"{self._cache_prefix}:{label}:node_stats:{compute_mdhash_id(node_key)}:*"
+            self._cache.delete(key)
+
     def get_node_to_node_stats(self, label: str, from_node_key: str, to_node_key: str) -> Optional[float]:
         if not self._cache:
             raise ValueError("Cache is not initialized")

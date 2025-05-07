@@ -28,15 +28,16 @@ def main():
         "Marina is bom in Minsk.",
         "Montebello is a part of Rockland County.",
     ]
-    impl.add_documents(unique_name,[Document(content=doc, uid=compute_mdhash_id(doc, "doc")) for doc in docs])
+    docs = impl.add_documents(unique_name,[Document(content=doc, uid=compute_mdhash_id(doc, "doc")) for doc in docs])
     queries = [
         "What is George Rankin's occupation?",
         # "How did Cinderella reach her happy ending?",
         # "What county is Erik Hort's birthplace a part of?",
     ]
-    docs = impl.retrieve(unique_name,queries=queries)
-    for doc in docs:
+    retrieve_docs = impl.retrieve(unique_name,queries=queries)
+    for doc in retrieve_docs:
         print(doc.query, doc.document.content, doc.score)
+    impl.delete(unique_name, [doc.uid for doc in docs])
 
 
 if __name__ == "__main__":

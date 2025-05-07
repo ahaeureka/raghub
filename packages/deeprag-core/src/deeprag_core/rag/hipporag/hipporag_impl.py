@@ -140,7 +140,6 @@ class HippoRAGImpl(BaseRAG):
             )
             for entity in entities_str
         ]
-        logger.info(f"Added {docs} and {[embed_entities]} documents to the embedding store.")
         _, new_docs = self._add_new_nodes(index_name, entities_nodes, docs)
 
         ent_node_to_chunk_ids, node_to_node_stats = self._add_fact_edges(docs, chunk_triples)
@@ -386,15 +385,12 @@ class HippoRAGImpl(BaseRAG):
             phrase_weights, linking_score_map = self.get_top_k_weights(
                 index_name, link_top_k, phrase_weights, linking_score_map
             )
-        logger.debug(f"linking_score_map: {linking_score_map}, phrase_weights: {phrase_weights}")
         passages = self.dense_passage_retrieval(index_name, query, query_to_embedding)
-        logger.debug(f"dense_passage_retrieval passages: {len(passages)}:{passages}")
         sorted_passages = sorted(passages, key=lambda x: x[1], reverse=True)
         dpr_doc_scores = [doc[1] for doc in sorted_passages]
         dpr_sorted_docs = [(doc[0].uid, doc[1]) for doc in sorted_passages]
         dpr_sorted_doc_scores = np.array(dpr_doc_scores, dtype=float)
         normalized_dpr_sorted_scores = dpr_sorted_doc_scores
-        logger.debug(f"normalized_dpr_sorted_scores:{dpr_sorted_doc_scores}: {normalized_dpr_sorted_scores}")
         for index, doc_score in enumerate(dpr_sorted_docs):
             passage_dpr_score = normalized_dpr_sorted_scores[index]
             passage_node_key = doc_score[0]
@@ -413,7 +409,6 @@ class HippoRAGImpl(BaseRAG):
         assert sum(node_weights.values()) > 0.0, f"No phrases found in the graph for the given facts: {top_k_facts}"
 
         # Running PPR algorithm based on the passage and phrase weights previously assigned
-        logger.debug(f"graph_search_with_fact_entities node_weights: {node_weights}: {len(node_weights)}")
         ppr_sorted_doc_scores = self.run_ppr(
             index_name, {k: v.astype(float) for k, v in node_weights.items()}, damping=damping, top_k=top_k
         )
@@ -544,7 +539,7 @@ class HippoRAGImpl(BaseRAG):
                     )
         return proc_triples_to_docs
 
-    def delete(self, index_name, docs_to_delete: List[str]):
+    def delete(self, index_name, docs_to_delete: List[str] | str):
         """
         Deletes documents and their associated triples from the database, embedding store, and graph store.
         Args:
@@ -556,7 +551,15 @@ class HippoRAGImpl(BaseRAG):
         triples_to_delete: List[str] = []
         entities_to_delete: List[str] = []
         docs_ids_to_triples = []
+        if isinstance(docs_to_delete, str):
+            docs_to_delete = [docs_to_delete]
+        import logging
+
+        # 设置 sqlalchemy 引擎的 logger 级别为 INFO 或 DEBUG 来显示 SQL 查询
+        logging.basicConfig()
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.DEBUG)
         openie_infos = self._db.get_openie_info(index_name, docs_to_delete)
+        logger.debug(f"delete openie_infos: {openie_infos}")
         docs_to_delete = [doc.idx for doc in openie_infos]
         chunk_ids_triple_to_delete: Dict[str, List[Tuple[str, str, str]]] = {}
         for doc in openie_infos:
@@ -564,6 +567,7 @@ class HippoRAGImpl(BaseRAG):
             for triple in doc.extracted_triples:
                 triple_tuple = tuple(triple)
                 docs_ids = set(self._db.get_docs_from_triples(index_name, triple_tuple) or [])
+                logger.debug(f"delete docs_ids from triple:{triple_tuple}: {docs_ids}")
                 if not docs_ids:
                     continue
                 docs_ids_to_triples.extend(list(docs_ids))
@@ -581,13 +585,20 @@ class HippoRAGImpl(BaseRAG):
                     # Mark triple for deletion
                     triples_to_delete.append(compute_mdhash_id(content=str(triple_tuple), prefix=self._fact_prefix))
         embedding_ids_to_delete = triples_to_delete + entities_to_delete + list(chunk_ids_triple_to_delete.keys())
-        self._embedd_store.delete(embedding_ids_to_delete)
-        graph_vertex_ids_to_delete = entities_to_delete + entities_to_delete
-        self._graph_store.delete_vertices(graph_vertex_ids_to_delete)
-        self._db.delete_openie_info(index_name, docs_to_delete)
-        self._db.delete_ent_node_to_chunk_ids(index_name, entities_to_delete)
-        self._db.delete_node_to_node_stats(index_name, triples_to_delete)
-        self._db.delete_triples_to_docs(index_name, triples_to_delete)
+        logger.warning(f"Delete {len(embedding_ids_to_delete)} embeddings: {embedding_ids_to_delete}")
+        if len(embedding_ids_to_delete) > 0:
+            self._embedd_store.delete(index_name, embedding_ids_to_delete)
+        graph_vertex_ids_to_delete = entities_to_delete + docs_to_delete
+        logger.warning(f"Delete {len(graph_vertex_ids_to_delete)} graph vertices: {graph_vertex_ids_to_delete}")
+        if len(graph_vertex_ids_to_delete) > 0:
+            self._graph_store.delete_vertices(index_name, graph_vertex_ids_to_delete)
+        if len(docs_to_delete) > 0:
+            self._db.delete_openie_info(index_name, docs_to_delete)
+        if len(entities_to_delete) > 0:
+            self._db.delete_ent_node_to_chunk_ids(index_name, entities_to_delete)
+        if len(docs_ids_to_triples) > 0:
+            self._db.delete_nodes_cache(index_name, graph_vertex_ids_to_delete)
+            self._db.delete_triples_to_docs(index_name, triples_to_delete)
 
     def run_ppr(
         self, index_name: str, node_weights: Dict[str, float], damping: float = 0.5, top_k: int = 10
@@ -910,8 +921,6 @@ class HippoRAGImpl(BaseRAG):
         existing_nodes: List[Dict[str, Any]] = self._graph_store.select_vertices(index_name, dict(name_in=node_ids))
         existing_ids = [node["name"] for node in existing_nodes]
         new_nodes: List[Dict[str, Any]] = []
-        logger.debug(f"existing_ids: {existing_ids}")
-        logger.debug(f"node_ids: {node_ids}")
         new_node_ids = set(node_ids) - set(existing_ids)
         new_pasages: List[Document] = []
         new_entities: List[Document] = []

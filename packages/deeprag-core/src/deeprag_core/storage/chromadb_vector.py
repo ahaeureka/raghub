@@ -132,7 +132,7 @@ class ChromaDBVectorStorage(VectorStorage):
         # Implement the logic to delete documents by their IDs from ChromaDB
         if not self._client:
             self.init()
-        self._chromadb_store_for_index(index_name).delete(ids=ids)
+        self._chromadb_store_for_index(index_name).delete(ids=list(set(ids)))
         return True
 
     def select_on_metadata(self, index_name: str, metadata_filter: Dict[str, Any]) -> List[Document]:

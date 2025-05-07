@@ -32,10 +32,11 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete(self, ids: List[str]) -> bool:
+    def delete(self, index_name: str, ids: List[str]) -> bool:
         """
         Delete documents by their IDs from the vector storage.
         Args:
+            index_name: Name of the index from which to delete documents.
             ids: List of document IDs to delete.
 
         Returns:
