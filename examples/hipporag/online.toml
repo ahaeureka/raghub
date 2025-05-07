@@ -37,7 +37,7 @@ url = "neo4j://127.0.0.1:7687"
 
 [database]
 provider = "sqlite"
-db_url = "sqlite:////app/output/.deeprag/app.db"
+db_url = "sqlite://app/output/.deeprag/app.db"
 
 [hipporag]
 synonymy_edge_topk = 2047
