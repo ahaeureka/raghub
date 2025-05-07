@@ -1,3 +1,4 @@
+import json
 import os
 import tomllib
 from pathlib import Path
@@ -34,7 +35,10 @@ class ConfigLoader:
             os.path.join(project_dir, ".devcontainer", "dev.toml"),
         ]
         for path in paths:
-            print(f"Checking config path: {path}")
+            logger.info(f"Checking config path: {path}")
             if os.path.exists(path):
                 return path
+        logger.warning(
+            f"No config file found at {json.dumps(paths, ensure_ascii=False, indent=4)}, using default path."
+        )
         return os.path.join(project_dir, "config.toml")  # 默认路径

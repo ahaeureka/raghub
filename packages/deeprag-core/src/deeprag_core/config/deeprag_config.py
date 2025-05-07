@@ -125,6 +125,36 @@ class VectorStorageConfig(BaseParameters):
         description="Directory to persist the vector storage",
         tags=["vector_storage"],
     )
+    host: Optional[str] = BaseParameters.field(
+        default="localhost",
+        description="Host for the vector storage",
+        tags=["vector_storage"],
+    )
+    port: Optional[int] = BaseParameters.field(
+        default=8000,
+        description="Port for the vector storage",
+        tags=["vector_storage"],
+    )
+    username: Optional[str] = BaseParameters.field(
+        default=None,
+        description="Username for vector storage authentication",
+        tags=["vector_storage"],
+    )
+    password: Optional[str] = BaseParameters.field(
+        default=None,
+        description="Password for vector storage authentication",
+        tags=["vector_storage"],
+    )
+    token: Optional[str] = BaseParameters.field(
+        default=None,
+        description="Token for vector storage authentication",
+        tags=["vector_storage"],
+    )
+    embedding_key_prefix: Optional[str] = BaseParameters.field(
+        default="embedding",
+        description="Prefix for the embedding key",
+        tags=["vector_storage"],
+    )
     # 其他向量存储相关的参数可以在这里添加
     # ...
 
@@ -142,6 +172,21 @@ class GraphStorageConfig(BaseParameters):
     graph_path: Optional[str] = BaseParameters.field(
         default=str(ProjectHelper.get_project_root() / "storage/graphs/default_graph.pkl"),
         description="Path to the graph file",
+        tags=["graph_storage"],
+    )
+    url: Optional[str] = BaseParameters.field(
+        default="http://localhost:8000",
+        description="Graph storage URL",
+        tags=["graph_storage"],
+    )
+    username: Optional[str] = BaseParameters.field(
+        default=None,
+        description="Username for graph storage authentication",
+        tags=["graph_storage"],
+    )
+    password: Optional[str] = BaseParameters.field(
+        default=None,
+        description="Password for graph storage authentication",
         tags=["graph_storage"],
     )
 
@@ -193,4 +238,97 @@ class DeepRAGConfig(BaseParameters):
     # 其他配置项...
 
 
-# from pydantic import BaseModel
+class SearchEngineConfig(BaseParameters):
+    """
+    Configuration for Search Engine
+    """
+
+    provider: str = BaseParameters.field(
+        default="elasticsearch",
+        description="Search Engine Provider",
+        tags=["search"],
+    )
+    host: str = BaseParameters.field(
+        default="localhost",
+        description="Search Engine Host",
+        tags=["search"],
+    )
+    port: int = BaseParameters.field(
+        default=9200,
+        description="Search Engine Port",
+        tags=["search"],
+    )
+    index_name_prefix: str = BaseParameters.field(
+        default="deeprag_index",
+        description="Search Engine Index Name",
+        tags=["search"],
+    )
+    username: Optional[str] = BaseParameters.field(
+        default=None,
+        description="Search Engine Username",
+        tags=["search"],
+    )
+    password: Optional[str] = BaseParameters.field(
+        default=None,
+        description="Search Engine Password",
+        tags=["search"],
+    )
+    use_ssl: bool = BaseParameters.field(
+        default=False,
+        description="Use SSL for Search Engine",
+        tags=["search"],
+    )
+    verify_certs: bool = BaseParameters.field(
+        default=False,
+        description="Verify SSL certificates for Search Engine",
+        tags=["search"],
+    )
+
+
+class DatabaseConfig(BaseParameters):
+    """
+    Configuration for Database
+    """
+
+    provider: str = BaseParameters.field(
+        default="sqlite",
+        description="Database Provider",
+        tags=["database"],
+    )
+    db_url: str = BaseParameters.field(
+        default="sqlite:///app.db",
+        description="Database URL",
+        tags=["database"],
+    )
+
+
+class CacheConfig(BaseParameters):
+    """
+    Configuration for Cache
+    """
+
+    provider: str = BaseParameters.field(
+        default="memory",
+        description="Cache Provider",
+        tags=["cache"],
+    )
+    cache_dir: Optional[str] = BaseParameters.field(
+        default=(ProjectHelper.get_project_root() / "cache").as_posix(),
+        description="Cache Directory",
+        tags=["cache"],
+    )
+    host: Optional[str] = BaseParameters.field(
+        default="localhost",
+        description="Cache Host",
+        tags=["cache"],
+    )
+    port: Optional[int] = BaseParameters.field(
+        default=6379,
+        description="Cache Port",
+        tags=["cache"],
+    )
+    auth: Optional[str] = BaseParameters.field(
+        default=None,
+        description="Cache Authentication",
+        tags=["cache"],
+    )

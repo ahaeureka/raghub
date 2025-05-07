@@ -8,11 +8,12 @@ from git import Optional
 class RedisCacheStorage(CacheStorage):
     name = "redis_cache"
 
-    def __init__(self, host="localhost", port=6379, db=0):
+    def __init__(self, host="localhost", port=6379, db=0, auth: Optional[str] = None):
         super().__init__()
         self._host = host
         self._port = port
         self._db = db
+        self._auth = auth
         try:
             import redis
         except ImportError:
@@ -23,7 +24,7 @@ class RedisCacheStorage(CacheStorage):
         """初始化 Redis 连接"""
         import redis
 
-        self._redis = redis.Redis(host=self._host, port=self._port, db=self._db)
+        self._redis = redis.Redis(host=self._host, port=self._port, db=self._db, password=self._auth)
         # 验证连接
         self._redis.ping()
 

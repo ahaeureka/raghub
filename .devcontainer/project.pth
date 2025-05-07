@@ -2,4 +2,5 @@
 /app/packages/deeprag-core/src
 /app/packages/deeprag-app/src
 /app/packages/deeprag-interfaces/src
+/app/packages/deeprag-ext/src
 /app/submodules/hipporag/src

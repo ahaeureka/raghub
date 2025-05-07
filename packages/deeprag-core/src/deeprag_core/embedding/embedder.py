@@ -25,7 +25,6 @@ class Embbedder(BaseEmbedding):
         self.embbedder: Optional[BaseEmbedding] = None
 
     def init(self):
-        print(f"Initializing {self.embbedder_type} embedder...")
         if self.embbedder_type == "openai-proxy-embedding":
             from deeprag_core.embedding.openai_embedding import OpenAIEmbedding
 

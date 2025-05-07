@@ -2,6 +2,7 @@ import os
 
 import tiktoken
 from deeprag_core.utils.file.project import ProjectHelper
+from loguru import logger
 
 tiktoken_cache_dir = ProjectHelper.get_project_root().joinpath("models", "tiktoken").as_posix()
 os.environ["TIKTOKEN_CACHE_DIR"] = tiktoken_cache_dir
@@ -16,4 +17,5 @@ class EmbeddingHelper:
         """
         if tiktoken_encoder is None:
             raise ValueError("Model is not initialized. Please provide a valid model.")
+        logger.debug(f"Truncating string to max length:{string} {max_len}")
         return tiktoken_encoder.decode(tiktoken_encoder.encode(string)[:max_len])

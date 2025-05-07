@@ -1,8 +1,7 @@
 from typing import Optional
 
 from deeprag_core.config.base import BaseParameters
-from deeprag_core.config.deeprag_config import DeepRAGConfig
-from deeprag_core.utils.file.project import ProjectHelper
+from deeprag_core.config.deeprag_config import CacheConfig, DatabaseConfig, DeepRAGConfig, SearchEngineConfig
 
 
 class LoggerConfig(BaseParameters):
@@ -22,15 +21,6 @@ class LoggerConfig(BaseParameters):
         description="Log File Path",
         tags=["log"],
     )
-
-    # synonymy_edge_topk: int = 2047,  # Number of top-k synonyms to consider for each node
-    # synonymy_edge_query_batch_size: int = 1000,  # Batch size for query embeddings during synonymy edge construction
-    # synonymy_edge_key_batch_size: int = 1000,  # Batch size for key embeddings during synonymy edge construction
-    # synonymy_edge_sim_threshold: float = 0.8,
-    # passage_node_weight:float = 0.05,
-    # linking_top_k: int = 10,  # Number of top-k documents to link to each node
-    # embedding_prefix="entity_embeddings",
-    # dspy_file_path: Optional[str] = None,
 
 
 class HippoRAGConfig(BaseParameters):
@@ -79,43 +69,9 @@ class HippoRAGConfig(BaseParameters):
         tags=["dspy"],
     )
     storage_provider: str = BaseParameters.field(
-        default="hipporag_storage_sql",
+        default="hipporag_storage_local",
         description="Storage provider for HippoRAG",
         tags=["storage"],
-    )
-
-
-class DatabaseConfig(BaseParameters):
-    """
-    Configuration for Database
-    """
-
-    provider: str = BaseParameters.field(
-        default="sqlite",
-        description="Database Provider",
-        tags=["database"],
-    )
-    url: str = BaseParameters.field(
-        default="sqlite:///app.db",
-        description="Database URL",
-        tags=["database"],
-    )
-
-
-class CacheConfig(BaseParameters):
-    """
-    Configuration for Cache
-    """
-
-    provider: str = BaseParameters.field(
-        default="memory",
-        description="Cache Provider",
-        tags=["cache"],
-    )
-    cache_dir: Optional[str] = BaseParameters.field(
-        default=(ProjectHelper.get_project_root() / "cache").as_posix(),
-        description="Cache Directory",
-        tags=["cache"],
     )
 
 
@@ -138,4 +94,9 @@ class APPConfig(DeepRAGConfig):
         default=CacheConfig(),
         description="Cache Configuration",
         tags=["cache"],
+    )
+    search_engine: SearchEngineConfig = BaseParameters.field(
+        default=SearchEngineConfig(),
+        description="Search Engine Configuration",
+        tags=["search_engine"],
     )

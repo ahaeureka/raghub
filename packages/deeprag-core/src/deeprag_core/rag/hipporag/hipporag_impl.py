@@ -39,7 +39,7 @@ class HippoRAGImpl(BaseRAG):
         graph_store: GraphStorage,
         hipporag_store: HipporagStorage,
         dspy_file_path: str,
-        embedding_key_prefix: str = "entity_embeddings",
+        embedding_prefix: str = "entity_embeddings",
         linking_top_k: int = 15,
         passage_node_weight: float = 0.05,
         graph_path: Optional[str] = None,
@@ -62,13 +62,13 @@ class HippoRAGImpl(BaseRAG):
         self._openie = OpenIEOperator(self._ner, self._rdf)
         dsp_prompt = DSPyRerankPrompt(best_dspy_path=dspy_file_path)
         super().__init__()
-        self._embedding_prefix = embedding_key_prefix
+        self._embedding_prefix = embedding_prefix
 
         self._embedder = embbeder
 
         self._embedd_store: VectorStorage = embedding_store
         self._graph_store: GraphStorage = graph_store
-        self.rerank_filter = DSPyFilter(dsp_prompt, self._llm)
+        self.rerank_filter = DSPyFilter(dsp_prompt, llm)
         # self.config = config
         self._db = hipporag_store
 
@@ -78,11 +78,14 @@ class HippoRAGImpl(BaseRAG):
         self._entity_prefix = "entity"
         self._fact_prefix = "fact"
         self._doc_prefix = "doc"
+        self.already_init = False
 
-    def create(self, name: str, description: str, idx: str):
-        pass
+    def create(self, index_name: str):
+        if not self.already_init:
+            self.init()
+        self._db.create_new_index(index_name)
 
-    def add_documents(self, texts: List[Document], lang="en") -> List[Document]:
+    def add_documents(self, index_name: str, texts: List[Document], lang="en") -> List[Document]:
         """
         Adds documents to the vector store and graph store.
 
@@ -115,35 +118,46 @@ class HippoRAGImpl(BaseRAG):
             chunk_triples[doc.uid] = [(item[0], item[1], item[2]) for item in ie.triples if len(item) == 3]
             entities_str.extend([str(node) for node in graph_nodes])
             doc.metadata["entities"] = [compute_mdhash_id(str(node), self._entity_prefix) for node in graph_nodes]
-            doc.metadata["facts"] = [compute_mdhash_id(str(fact)) for fact in ie.triples]
+            doc.metadata["facts"] = [compute_mdhash_id(str(fact), self._fact_prefix) for fact in ie.triples]
             facts = self._flatten_facts([ie.triples])
             facts_str.extend([str(fact) for fact in facts])
 
         entities_str = list(set(entities_str))
         facts_str = list(set(facts_str))
-        embed_entities = self.add_embeddings(entities_str, self._entity_prefix, metadata={"namespace": "entity"})
+        embed_entities = self.add_embeddings(
+            index_name, entities_str, self._entity_prefix, metadata={"namespace": "entity"}
+        )
+        logger.info(f"Added {len(embed_entities)}:{entities_str} entities to the embedding store.")
+        self.add_embeddings(index_name, facts_str, self._fact_prefix, metadata={"namespace": "fact"})
 
-        self.add_embeddings(facts_str, self._fact_prefix, metadata={"namespace": "fact"})
+        self._db.save_openie_info(index_name, openie_infos)
+        docs = self._embedd_store.add_documents(index_name, texts)
+        entities_nodes = [
+            Document(
+                uid=compute_mdhash_id(entity, self._entity_prefix),
+                content=entity,
+                metadata={"namespace": "entity"},
+            )
+            for entity in entities_str
+        ]
+        logger.info(f"Added {docs} and {[embed_entities]} documents to the embedding store.")
+        _, new_docs = self._add_new_nodes(index_name, entities_nodes, docs)
 
-        self._db.save_openie_info(openie_infos)
-        docs = self._embedd_store.add_documents_filter_exists(texts)
-        _, new_docs = self._add_new_nodes(embed_entities, docs)
-
-        ent_node_to_chunk_ids, node_to_node_stats = self._add_fact_edges(new_docs, chunk_triples)
-        num_new_chunks = self._add_passage_edges(new_docs, chunk_triples, node_to_node_stats)
+        ent_node_to_chunk_ids, node_to_node_stats = self._add_fact_edges(docs, chunk_triples)
+        num_new_chunks = self._add_passage_edges(docs, chunk_triples, node_to_node_stats)
         logger.info(f"Added {num_new_chunks} new chunks.")
-        if num_new_chunks > 0:
-            entities: List[Document] = self._embedd_store.select_on_metadata({"namespace": "entity"})
-            self._add_synonymy_edges(entities, entities, node_to_node_stats)
-            self._augment_graph(embed_entities, texts, node_to_node_stats)
-            self._save()
+        # if num_new_chunks > 0:
+        entities: List[Document] = self._embedd_store.select_on_metadata(index_name, {"namespace": "entity"})
+        self._add_synonymy_edges(entities, entities, node_to_node_stats)
+        self._augment_graph(index_name, embed_entities, texts, node_to_node_stats)
+        self._save()
         for key, chunks in ent_node_to_chunk_ids.items():
-            exists_ent_chunks = self._db.get_ent_node_to_chunk_ids(key) or []
-            self._db.set_ent_node_to_chunk_ids(key, list(set(chunks).union(set(exists_ent_chunks))))
+            exists_ent_chunks = self._db.get_ent_node_to_chunk_ids(index_name, key) or []
+            self._db.set_ent_node_to_chunk_ids(index_name, key, list(set(chunks).union(set(exists_ent_chunks))))
         for node_to_node, stats in node_to_node_stats.items():
-            self._db.set_node_to_node_stats(node_to_node[0], node_to_node[1], stats)
+            self._db.set_node_to_node_stats(index_name, node_to_node[0], node_to_node[1], stats)
         triples_to_docs = self.get_proc_triples_to_docs(openie_infos)
-        self._db.set_triples_to_docs(triples_to_docs)
+        self._db.set_triples_to_docs(index_name, triples_to_docs)
         return texts
 
     def _get_query_embeddings(self, queries: List[str]) -> Dict[str, Dict[str, np.ndarray]]:
@@ -191,7 +205,11 @@ class HippoRAGImpl(BaseRAG):
         return query_to_embedding
 
     def _get_fact_scores(
-        self, query: str, query_to_embedding: Optional[Dict[str, Dict[str, np.ndarray]]] = {}, top_k: int = 10
+        self,
+        index_name,
+        query: str,
+        query_to_embedding: Optional[Dict[str, Dict[str, np.ndarray]]] = {},
+        top_k: int = 10,
     ) -> List[Tuple[Document, float]]:
         """
         Retrieves and computes normalized similarity scores between the given query and pre-stored fact embeddings.
@@ -216,7 +234,7 @@ class HippoRAGImpl(BaseRAG):
         if query_embedding is None:
             query_embedding = self._embedder.encode(query, instruction=get_query_instruction("query_to_fact"))
         return self._embedd_store.similarity_search_by_vector(
-            query_embedding.tolist(), k=top_k, filter={"namespace": "fact"}
+            index_name=index_name, embedding=query_embedding.tolist(), k=top_k, filter={"namespace": "fact"}
         )
 
     def rerank_facts(
@@ -267,7 +285,7 @@ class HippoRAGImpl(BaseRAG):
         return top_k_facts
 
     def dense_passage_retrieval(
-        self, query: str, query_to_embedding: Dict[str, Dict[str, np.ndarray]], top_k: int = 20
+        self, index_name: str, query: str, query_to_embedding: Dict[str, Dict[str, np.ndarray]], top_k: int = 20
     ) -> List[Tuple[Document, float]]:
         """
         Performs dense passage retrieval using the provided query and its corresponding embeddings.
@@ -287,11 +305,12 @@ class HippoRAGImpl(BaseRAG):
         if query_embedding is None:
             query_embedding = self._embedder.encode(query, instruction=get_query_instruction("query_to_passage"))
         return self._embedd_store.similarity_search_by_vector(
-            query_embedding.tolist(), k=top_k, filter={"namespace": "passage"}
+            index_name, query_embedding.tolist(), k=top_k, filter={"namespace": "passage"}
         )
 
     def graph_search_with_fact_entities(
         self,
+        index_name: str,
         query: str,
         query_to_embedding: Dict[str, Dict[str, np.ndarray]],
         link_top_k: int,
@@ -338,7 +357,7 @@ class HippoRAGImpl(BaseRAG):
             phrase_keys.append(compute_mdhash_id(content=subject_phrase, prefix=self._entity_prefix))
             phrase_keys.append(compute_mdhash_id(content=object_phrase, prefix=self._entity_prefix))
         phrase_keys = list(set(phrase_keys))
-        nodes = self._graph_store.select_vertices(dict(name_in=phrase_keys))
+        nodes = self._graph_store.select_vertices(index_name, dict(name_in=phrase_keys))
         node_id_to_phrase = {node["name"]: node for node in nodes}
 
         for doc, fact_score in top_k_facts:
@@ -351,7 +370,7 @@ class HippoRAGImpl(BaseRAG):
 
                 if phrase_key in node_id_to_phrase:
                     phrase_weights[phrase_key] = np.float64(fact_score)
-                    chunks = self._db.get_ent_node_to_chunk_ids(phrase_key) or set()
+                    chunks = self._db.get_ent_node_to_chunk_ids(index_name, phrase_key) or set()
                     if len(chunks) > 0:
                         phrase_weights[phrase_key] /= len(chunks)
 
@@ -364,9 +383,11 @@ class HippoRAGImpl(BaseRAG):
             linking_score_map[phrase] = float(np.mean(scores))
 
         if link_top_k:
-            phrase_weights, linking_score_map = self.get_top_k_weights(link_top_k, phrase_weights, linking_score_map)
+            phrase_weights, linking_score_map = self.get_top_k_weights(
+                index_name, link_top_k, phrase_weights, linking_score_map
+            )
         logger.debug(f"linking_score_map: {linking_score_map}, phrase_weights: {phrase_weights}")
-        passages = self.dense_passage_retrieval(query, query_to_embedding)
+        passages = self.dense_passage_retrieval(index_name, query, query_to_embedding)
         logger.debug(f"dense_passage_retrieval passages: {len(passages)}:{passages}")
         sorted_passages = sorted(passages, key=lambda x: x[1], reverse=True)
         dpr_doc_scores = [doc[1] for doc in sorted_passages]
@@ -378,7 +399,7 @@ class HippoRAGImpl(BaseRAG):
             passage_dpr_score = normalized_dpr_sorted_scores[index]
             passage_node_key = doc_score[0]
             passage_weights[passage_node_key] = passage_dpr_score * passage_node_weight
-            passage_node_text = self._embedd_store.get(passage_node_key).content
+            passage_node_text = self._embedd_store.get(index_name, passage_node_key).content
             linking_score_map[passage_node_text] = passage_dpr_score * passage_node_weight
 
         phrase_weights.update(passage_weights)
@@ -394,13 +415,17 @@ class HippoRAGImpl(BaseRAG):
         # Running PPR algorithm based on the passage and phrase weights previously assigned
         logger.debug(f"graph_search_with_fact_entities node_weights: {node_weights}: {len(node_weights)}")
         ppr_sorted_doc_scores = self.run_ppr(
-            {k: v.astype(float) for k, v in node_weights.items()}, damping=damping, top_k=top_k
+            index_name, {k: v.astype(float) for k, v in node_weights.items()}, damping=damping, top_k=top_k
         )
 
         return ppr_sorted_doc_scores
 
     def get_top_k_weights(
-        self, link_top_k: int, all_phrase_weights: Dict[str, np.float64], linking_score_map: Dict[str, float]
+        self,
+        index_name: str,
+        link_top_k: int,
+        all_phrase_weights: Dict[str, np.float64],
+        linking_score_map: Dict[str, float],
     ) -> Tuple[Dict[str, np.float64], Dict[str, float]]:
         """
         Filters the phrase weights and linking scores to retain only the top-k phrases.
@@ -427,7 +452,9 @@ class HippoRAGImpl(BaseRAG):
         )
 
         # Step 3: 查询图中实际存在的短语 ID
-        top_k_nodes = self._graph_store.select_vertices(dict(name_in=list(top_k_phrase_ids)))
+        top_k_nodes = self._graph_store.select_vertices(index_name, dict(name_in=list(top_k_phrase_ids)))
+        logger.debug(f"get_top_k_weights top_k_nodes: {top_k_nodes}:{len(top_k_nodes)}")
+        logger.debug(f"get_top_k_weights top_k_phrase_ids: {top_k_phrase_ids}:{len(top_k_phrase_ids)}")
         top_k_phrase_ids_in_graph = [node["name"] for node in top_k_nodes]
 
         # Step 4: 清除未选中短语的权重
@@ -437,12 +464,12 @@ class HippoRAGImpl(BaseRAG):
 
         # Step 5: 验证过滤后非零权重数量是否等于 link_top_k
         assert sum(1 for w in all_phrase_weights.values() if w != 0.0) == len(linking_score_map), (
-            "过滤后非零权重数量与 link_top_k 不一致"
+            "Filtered phrase weights do not match the number of top-k phrases."
         )
 
         return all_phrase_weights, linking_score_map
 
-    def retrieve(self, queries: List[str], retrieve_top_k=10, lang="en") -> List[RetrieveResultItem]:
+    def retrieve(self, index_name: str, queries: List[str], retrieve_top_k=10, lang="en") -> List[RetrieveResultItem]:
         """
         Retrieves documents based on the provided queries using a combination of dense
         passage retrieval and graph search.
@@ -461,7 +488,7 @@ class HippoRAGImpl(BaseRAG):
         top_k_docs: List[RetrieveResultItem] = []
         for q_idx, query in tqdm(enumerate(queries), desc="Retrieving", total=len(queries)):
             # rerank_start = time.time()
-            query_fact_scores = self._get_fact_scores(query, query_to_embedding)
+            query_fact_scores = self._get_fact_scores(index_name, query, query_to_embedding)
             top_k_facts = self.rerank_facts(query, query_fact_scores, lang=lang, link_top_k=self.linking_top_k)
             # rerank_end = time.time()
 
@@ -469,10 +496,13 @@ class HippoRAGImpl(BaseRAG):
 
             if len(top_k_facts) == 0:
                 logger.info("No facts found after reranking, return DPR results")
-                sorted_doc_scores = self.dense_passage_retrieval(query, query_to_embedding, top_k=retrieve_top_k)
+                sorted_doc_scores = self.dense_passage_retrieval(
+                    index_name, query, query_to_embedding, top_k=retrieve_top_k
+                )
                 top_k_docs.extend([RetrieveResultItem(document=d, score=s, query=query) for d, s in sorted_doc_scores])
             else:
                 sorted_doc_key_scores = self.graph_search_with_fact_entities(
+                    index_name=index_name,
                     query=query,
                     query_to_embedding=query_to_embedding,
                     link_top_k=self.linking_top_k,
@@ -481,7 +511,8 @@ class HippoRAGImpl(BaseRAG):
                     top_k=retrieve_top_k,
                 )
                 docs_ids = list(sorted_doc_key_scores.keys())
-                docs = self._embedd_store.get_by_ids(docs_ids)
+                logger.debug(f"graph_search_with_fact_entities retrieve docs_ids: {docs_ids}")
+                docs = self._embedd_store.get_by_ids(index_name, docs_ids)
                 top_k_docs.extend(
                     [
                         RetrieveResultItem(document=doc, score=sorted_doc_key_scores[doc.uid], query=query, metadata={})
@@ -509,11 +540,11 @@ class HippoRAGImpl(BaseRAG):
                 if len(triple) == 3:
                     # proc_triple = tuple(text_processing(list(triple)))
                     proc_triples_to_docs[str(triple)] = proc_triples_to_docs.get(str(triple), set()).union(
-                        set([doc["idx"]])
+                        set([doc.idx])
                     )
         return proc_triples_to_docs
 
-    def delete(self, docs_to_delete: List[str]):
+    def delete(self, index_name, docs_to_delete: List[str]):
         """
         Deletes documents and their associated triples from the database, embedding store, and graph store.
         Args:
@@ -525,14 +556,14 @@ class HippoRAGImpl(BaseRAG):
         triples_to_delete: List[str] = []
         entities_to_delete: List[str] = []
         docs_ids_to_triples = []
-        openie_infos = self._db.get_openie_info(docs_to_delete)
+        openie_infos = self._db.get_openie_info(index_name, docs_to_delete)
         docs_to_delete = [doc.idx for doc in openie_infos]
         chunk_ids_triple_to_delete: Dict[str, List[Tuple[str, str, str]]] = {}
         for doc in openie_infos:
             chunk_ids_triple_to_delete[doc.idx] = [tuple(t) for t in doc.extracted_triples]
             for triple in doc.extracted_triples:
                 triple_tuple = tuple(triple)
-                docs_ids = set(self._db.get_docs_from_triples(triple_tuple) or [])
+                docs_ids = set(self._db.get_docs_from_triples(index_name, triple_tuple) or [])
                 if not docs_ids:
                     continue
                 docs_ids_to_triples.extend(list(docs_ids))
@@ -543,7 +574,7 @@ class HippoRAGImpl(BaseRAG):
                     # Process entities for potential deletion
                     for entity in entities:
                         entity_id = compute_mdhash_id(content=entity, prefix=self._entity_prefix)
-                        entity_docs = set(self._db.get_ent_node_to_chunk_ids(entity_id) or [])
+                        entity_docs = set(self._db.get_ent_node_to_chunk_ids(index_name, entity_id) or [])
                         # Only delete entities that are exclusively used by documents being deleted
                         if entity_docs and not entity_docs.difference(set(docs_to_delete)):
                             entities_to_delete.append(entity_id)
@@ -553,12 +584,14 @@ class HippoRAGImpl(BaseRAG):
         self._embedd_store.delete(embedding_ids_to_delete)
         graph_vertex_ids_to_delete = entities_to_delete + entities_to_delete
         self._graph_store.delete_vertices(graph_vertex_ids_to_delete)
-        self._db.delete_openie_info(docs_to_delete)
-        self._db.delete_ent_node_to_chunk_ids(entities_to_delete)
-        self._db.delete_node_to_node_stats(triples_to_delete)
-        self._db.delete_triples_to_docs(triples_to_delete)
+        self._db.delete_openie_info(index_name, docs_to_delete)
+        self._db.delete_ent_node_to_chunk_ids(index_name, entities_to_delete)
+        self._db.delete_node_to_node_stats(index_name, triples_to_delete)
+        self._db.delete_triples_to_docs(index_name, triples_to_delete)
 
-    def run_ppr(self, node_weights: Dict[str, float], damping: float = 0.5, top_k: int = 10) -> Dict[str, float]:
+    def run_ppr(
+        self, index_name: str, node_weights: Dict[str, float], damping: float = 0.5, top_k: int = 10
+    ) -> Dict[str, float]:
         """
         Computes personalized PageRank scores for the given nodes in the graph.
         Args:
@@ -577,16 +610,22 @@ class HippoRAGImpl(BaseRAG):
             damping = 0.5  # for potential compatibilityp
 
         pagerank_scores = self._graph_store.personalized_pagerank(
+            label=index_name,
             vertices_with_weight=node_weights,
             damping=damping,
-            top_k=top_k,  # Ensure top_k is passed correctly here
+            top_k=top_k * 2,  # Ensure top_k is passed correctly here
         )
         # filter doc- prefix
+        logger.debug(f"run_ppr pagerank_scores: {pagerank_scores}")
         filtered_dict = {k: v for k, v in pagerank_scores.items() if k.startswith(self._doc_prefix)}
         return filtered_dict
 
     def _augment_graph(
-        self, entities: List[Document], passages: List[Document], node_to_node_stats: Dict[Tuple[str, str], float]
+        self,
+        index_name: str,
+        entities: List[Document],
+        passages: List[Document],
+        node_to_node_stats: Dict[Tuple[str, str], float],
     ):
         """
         Provides utility functions to augment a graph by adding new nodes and edges.
@@ -594,8 +633,8 @@ class HippoRAGImpl(BaseRAG):
         and logs the completion status along with printing the updated graph information.
         """
 
-        self._add_new_nodes(entities, passages)
-        self._graph_store.add_new_edges(node_to_node_stats)
+        self._add_new_nodes(index_name, entities, passages)
+        self._graph_store.add_new_edges(index_name, node_to_node_stats)
 
         logger.info("Graph construction completed!")
 
@@ -663,7 +702,7 @@ class HippoRAGImpl(BaseRAG):
         return graph_nodes, triple_entities
 
     def add_embeddings(
-        self, entity_nodes: List[str], prefix: str, metadata: Optional[Dict[str, str]] = None
+        self, index_name: str, entity_nodes: List[str], prefix: str, metadata: Optional[Dict[str, str]] = None
     ) -> List[Document]:
         """
         Adds embeddings for the given entity nodes to the embedding store.
@@ -690,7 +729,7 @@ class HippoRAGImpl(BaseRAG):
         all_hash_ids = list(nodes_dict.keys())
         if not all_hash_ids:
             return []
-        existing = self._embedd_store.get_by_ids(all_hash_ids)
+        existing = self._embedd_store.get_by_ids(index_name, all_hash_ids)
         existing_ids = {doc.uid for doc in existing}
         missing_ids = [hash_id for hash_id in all_hash_ids if hash_id not in existing_ids]
         texts_to_encode = [nodes_dict[hash_id]["content"] for hash_id in missing_ids]
@@ -699,9 +738,12 @@ class HippoRAGImpl(BaseRAG):
             for hash_id, text in zip(missing_ids, texts_to_encode)
         ]
         if len(docs) == 0:
-            return []
+            return [
+                # Document(uid=hash_id, content=text["content"], metadata=metadata)
+                # for hash_id, text in nodes_dict.items()
+            ]
         logger.debug(f"Adding {len(docs)}:{docs} new embeddings to the store.")
-        self._embedd_store.add_documents_filter_exists(docs)
+        self._embedd_store.add_documents(index_name, docs)
         return docs
 
     def _get_not_existing_nodes(self, chunk_key: List[str]):
@@ -844,7 +886,7 @@ class HippoRAGImpl(BaseRAG):
             synonym_candidates.append((node_key, synonyms))
 
     def _add_new_nodes(
-        self, entities: List[Document], passages: List[Document]
+        self, index_name: str, entities: List[Document], passages: List[Document]
     ) -> Tuple[List[Document], List[Document]]:
         """
         Adds new nodes to the graph for the given entities and passages.
@@ -865,9 +907,11 @@ class HippoRAGImpl(BaseRAG):
 
         node_to_rows_map = {doc.uid: doc.model_dump() for doc in docs}
         node_ids = list(node_to_rows_map.keys())
-        existing_nodes: List[Dict[str, Any]] = self._graph_store.select_vertices(dict(name_in=node_ids))
+        existing_nodes: List[Dict[str, Any]] = self._graph_store.select_vertices(index_name, dict(name_in=node_ids))
         existing_ids = [node["name"] for node in existing_nodes]
         new_nodes: List[Dict[str, Any]] = []
+        logger.debug(f"existing_ids: {existing_ids}")
+        logger.debug(f"node_ids: {node_ids}")
         new_node_ids = set(node_ids) - set(existing_ids)
         new_pasages: List[Document] = []
         new_entities: List[Document] = []
@@ -882,6 +926,6 @@ class HippoRAGImpl(BaseRAG):
             node["name"] = node_id
             new_nodes.append(node)
         if len(new_nodes) > 0:
-            self._graph_store.add_vertices(new_nodes)
+            self._graph_store.add_vertices(index_name, new_nodes)
             logger.info(f"Added {len(new_nodes)} new nodes to the graph.")
         return new_entities, new_pasages

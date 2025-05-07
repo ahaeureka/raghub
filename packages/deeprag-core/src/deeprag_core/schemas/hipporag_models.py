@@ -1,5 +1,5 @@
 import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from pydantic import ConfigDict
 from sqlmodel import JSON, Column, Field, SQLModel
@@ -15,7 +15,7 @@ class OpenIEInfo(SQLModel, table=True):  # type: ignore[call-arg]
         description="List of named entities extracted from the text.",
         sa_column=Column(JSON, doc="List of named entities extracted from the text."),
     )
-    extracted_triples: List[List[str]] = Field(
+    extracted_triples: List[List[str]] | List[Dict[str, str]] = Field(
         ...,
         description="List of triples extracted from the text.",
         sa_column=Column(JSON, doc="List of triples extracted from the text."),

@@ -1,8 +1,8 @@
 import inspect
 import multiprocessing
-import threading
+import multiprocessing.synchronize
 from abc import ABC, ABCMeta
-from typing import Dict, Type, TypeVar
+from typing import Any, Dict, Type, TypeVar
 
 from loguru import logger
 
@@ -10,18 +10,19 @@ T = TypeVar("T")
 
 
 class SingletonMeta(type):
-    _instances: Dict[Type, object] = {}
-    _thread_lock = threading.Lock()
-    _process_lock = multiprocessing.Lock()
+    _instances: Dict[Type, Any] = {}
+    _locks: Dict[str, multiprocessing.synchronize.Lock] = {}  # 单一锁，适用于线程和进程
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
-            with cls._thread_lock:
+            lock = cls._locks.get(cls.__name__)
+            if lock is None:
+                lock = multiprocessing.Lock()
+                cls._locks[cls.__name__] = lock
+            with lock:
                 if cls not in cls._instances:
-                    with cls._process_lock:
-                        if cls not in cls._instances:
-                            instance = super().__call__(*args, **kwargs)
-                            cls._instances[cls] = instance
+                    instance = super().__call__(*args, **kwargs)
+                    cls._instances[cls] = instance
         return cls._instances[cls]
 
 
@@ -37,6 +38,10 @@ class RegsiterMeta(type):
 
 
 class SingletonRegisterMeta(SingletonMeta, RegsiterMeta, ABCMeta):
+    pass
+
+
+class RegisterABCMeta(RegsiterMeta, ABCMeta):
     pass
 
 
@@ -59,5 +64,5 @@ class ClassFactory:
         filtered_kwargs = {
             name: value for name, value in kwargs.items() if name in signature.parameters and name != "self"
         }
-        logger.debug(f"Creating instance of {cls.__name__} with args: {args}, kwargs: {filtered_kwargs}")
+        logger.debug(f"Filtered kwargs for {cls.__name__}: {filtered_kwargs}: {kwargs}")
         return cls(*args, **filtered_kwargs)

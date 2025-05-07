@@ -78,6 +78,5 @@ class RDFOperator(BaseOperator[RDFOperatorOutputModel]):
         processed_triples = []
         for triple in triples:
             processed_triple = [re.sub("[^A-Za-z0-9 ]", " ", item.lower()).strip() for item in triple]
-            print(f"Processed text_processing triple: {processed_triple}")
             processed_triples.append(processed_triple)
         return processed_triples

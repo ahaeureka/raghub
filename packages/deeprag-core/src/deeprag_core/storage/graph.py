@@ -14,7 +14,7 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this `init` method.")
 
     @abstractmethod
-    def add_new_edges(self, node_to_node_stats: Dict[Tuple[str, str], float]):
+    def add_new_edges(self, label: str, node_to_node_stats: Dict[Tuple[str, str], float]) -> None:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
@@ -26,7 +26,7 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
     #     raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def add_vertices(self, nodes: List[Dict[str, Any]]) -> None:
+    def add_vertices(self, label: str, nodes: List[Dict[str, Any]]) -> None:
         raise NotImplementedError("Subclasses should implement this method.")
 
     # @abstractmethod
@@ -34,12 +34,13 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
     #     raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def vertices_count(self) -> int:
+    def vertices_count(self, label: str) -> int:
         raise NotImplementedError("Subclasses should implement this `vertices_count` method.")
 
     @abstractmethod
     def personalized_pagerank(
         self,
+        label: str,
         vertices_with_weight: Dict[str, float],
         damping: float = 0.85,
         top_k: int = 10,
@@ -48,11 +49,11 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def select_vertices(self, attrs: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def select_vertices(self, label, attrs: Dict[str, Any]) -> List[Dict[str, Any]]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete_vertices(self, keys: List[str]) -> None:
+    def delete_vertices(self, label: str, keys: List[str]) -> None:
         """Delete vertices from the graph."""
         raise NotImplementedError("Subclasses should implement this method.")
 

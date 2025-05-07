@@ -30,7 +30,6 @@ class BaseOperator(ABC, Generic[TOperatorOutputModel]):
         d["name"] = self.name
         try:
             d = self.post_process(d)  # Apply post-processing to the output
-            logger.debug(f"Operator {self.name} with {input} output: {d}")  # Log the output for debugging purposes
             if not self.output_cls:
                 raise ValueError("output_cls must be set")
             return self.output_cls.model_validate(d)

@@ -1,0 +1,65 @@
+app_name = "deeprag"
+app_version = "0.1.0"
+app_description = "DeepRAG Application"
+
+[logger]
+log_level = "DEBUG"
+log_dir = "/app/output/deeprag/logs"
+
+[rag.llm]
+model = "${env:LLM_MODEL_NAME:-qwen-plus}"
+base_url = "${env:OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
+api_key = "${env:OPENAI_API_KEY}"
+timeout = 60
+provider = "${env:EMBEDDING_PROVIDER:-openai-proxy}"
+temperature = 0.3
+
+[rag.embbeding]
+model = "${env:EMBEDDING_MODEL_NAME:-text-embedding-v3}"
+provider = "${env:EMBEDDING_PROVIDER:-openai-proxy-embedding}"
+batch_size = 5
+embedding_key_prefix = "embedding"
+base_url = "${env:OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
+api_key = "${env:OPENAI_API_KEY}"
+
+[rag]
+lang = "en"
+
+[vector_storage]
+provider = "elasticsearch_vector"
+collection_name = "default_collection"
+persist_directory = "/app/output/.deeprag/cache/chroma_db"
+
+[graph]
+provider = "neo4j"
+graph_path = "/app/output/.deeprag/storage/graphs/default_graph.pkl"
+url = "neo4j://127.0.0.1:7687"
+
+[database]
+provider = "sqlite"
+db_url = "sqlite:////app/output/.deeprag/app.db"
+
+[hipporag]
+synonymy_edge_topk = 2047
+synonymy_edge_query_batch_size = 1000
+synonymy_edge_key_batch_size = 1000
+synonymy_edge_sim_threshold = 0.8
+passage_node_weight = 0.05
+linking_top_k = 10
+embedding_prefix = "hipporag_embeddings"
+dspy_file_path = "/app/configs/filter_llama3.3-70B-Instruct.json"
+storage_provider="hipporag_storage_online"
+
+[cache]
+provider = "redis_cache"
+cache_dir = "/app/output/.deeprag/cache"
+host="127.0.0.1"
+port=6379
+[search_engine]
+provider = "elasticsearch"
+host = "localhost"
+port = 9200
+index_name_prefix="deeprag_index"
+
+
+

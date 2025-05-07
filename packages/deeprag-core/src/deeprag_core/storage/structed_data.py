@@ -3,7 +3,7 @@ from typing import Any, List, Type
 
 from deeprag_core.utils.class_meta import SingletonRegisterMeta
 from sqlalchemy import Executable
-from sqlmodel import SQLModel, inspect
+from sqlmodel import SQLModel
 
 
 class StructedDataStorage(metaclass=SingletonRegisterMeta):
@@ -48,5 +48,5 @@ class StructedDataStorage(metaclass=SingletonRegisterMeta):
         Returns:
             List[str]: A list of primary key names.
         """
-        mapper = inspect(model_class)
-        return [col.name for col in mapper.primary_key]
+        primary_key_names = [col.name for col in model_class.__table__.primary_key.columns.values()]
+        return primary_key_names

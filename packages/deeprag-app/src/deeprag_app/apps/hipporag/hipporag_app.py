@@ -11,6 +11,7 @@ from deeprag_core.schemas.rag_model import RetrieveResultItem
 from deeprag_core.storage.graph import GraphStorage
 from deeprag_core.storage.vector import VectorStorage
 from deeprag_core.utils.class_meta import ClassFactory
+from loguru import logger
 
 
 class HippoRAG(BaseApp):
@@ -38,38 +39,47 @@ class HippoRAG(BaseApp):
             api_key=config.rag.embbeding.api_key,
             n_dims=config.rag.embbeding.n_dims,
         )
-
+        embbeddr_store_config = config.vector_storage.model_dump()
+        embbeddr_store_config.update(config.search_engine.model_dump())
         self._embedd_store: VectorStorage = ClassFactory.get_instance(
-            config.vector_storage.provider, VectorStorage, embedder=self._embedder, **config.vector_storage.model_dump()
+            config.vector_storage.provider, VectorStorage, embedder=self._embedder, **embbeddr_store_config
         )
         self._graph_store: GraphStorage = ClassFactory.get_instance(
             config.graph.provider, GraphStorage, **config.graph.model_dump()
         )
         self.config = config
-        db_config = config.database.model_dump()
-        db_config["db_url"] = config.database.url
-        db_config["cache_dir"] = config.cache.cache_dir
-        db_config["db_provider"] = config.database.provider
-        db_config["cache_provider"] = config.cache.provider
+        logger.debug(f"Storage Provider store: {self.config.hipporag.storage_provider}")
         self._db = ClassFactory.get_instance(
             config.hipporag.storage_provider,
             HipporagStorage,
-            database_config=config.database,
+            db_config=config.database,
             cache_config=config.cache,
-            **db_config,
+            search_engine_config=config.search_engine,
         )
-
+        hipporag_config = config.hipporag.model_dump()
+        hipporag_config["embedding_prefix"] = config.rag.embbeding.embedding_key_prefix
+        hipporag_config["graph_path"] = config.graph.graph_path
+        hipporag_config.pop("storage_provider", None)
         self.hipporag = HippoRAGImpl(
             self._llm,
             self._embedder,
             self._embedd_store,
             self._graph_store,
             self._db,
-            config.hipporag.dspy_file_path,
-            **config.hipporag.model_dump(),
+            **hipporag_config,
         )
 
-    def add_documents(self, texts: List[Document], lang="en") -> List[Document]:
+    def create(self, unique_name: str):
+        """
+        Creates a new index in the vector store and graph store.
+
+        Args:
+            unique_name : str
+                The unique name for the index to be created.
+        """
+        self.hipporag.create(unique_name)
+
+    def add_documents(self, unique_name: str, texts: List[Document], lang="en") -> List[Document]:
         """
         Adds documents to the vector store and graph store.
 
@@ -79,10 +89,9 @@ class HippoRAG(BaseApp):
             lang : str
                 The language of the documents. Defaults to "en".
         """
+        return self.hipporag.add_documents(unique_name, texts, lang=lang)
 
-        return self.hipporag.add_documents(texts, lang=lang)
-
-    def retrieve(self, queries: List[str], retrieve_top_k=10, lang="en") -> List[RetrieveResultItem]:
+    def retrieve(self, unique_name: str, queries: List[str], retrieve_top_k=10, lang="en") -> List[RetrieveResultItem]:
         """
         Retrieves documents based on the provided queries using a combination of dense
         passage retrieval and graph search.
@@ -100,6 +109,7 @@ class HippoRAG(BaseApp):
                 A list of RetrieveResultItem objects containing the retrieved documents and their corresponding scores.
         """
         return self.hipporag.retrieve(
+            unique_name,
             queries=queries,
             retrieve_top_k=retrieve_top_k,
             lang=lang,

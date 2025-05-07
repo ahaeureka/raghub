@@ -1,3 +1,4 @@
+import copy
 import os
 from typing import Any, Dict, List, Tuple
 
@@ -49,20 +50,20 @@ class IGraphStore(GraphStorage):
             return self._graph.vs[name]
         raise ValueError(f"Vertex {name} not found in the graph.")
 
-    def delete_vertices(self, keys: List[str]) -> None:
+    def delete_vertices(self, label, keys: List[str]) -> None:
         """Delete vertices from the graph by their IDs."""
         if not self._graph:
             self.load_graph()
         if not keys:
             raise ValueError("IDs list is empty.")
-        ret: ig.VertexSeq = self._graph.vs.select(name_in=keys)
+        ret: ig.VertexSeq = self._graph.vs.select(name_in=keys, label=label)
         ids = ret.indices
 
         logger.info(f"Deleting vertices with IDs: {ids}")
         self._graph.delete_vertices(ids)
         logger.info(f"Deleted {len(ids)} vertices from the graph.")
 
-    def select_vertices(self, attrs: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def select_vertices(self, label: str, attrs: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Select vertices based on attributes."""
         if not self._graph:
             self.load_graph()
@@ -70,6 +71,7 @@ class IGraphStore(GraphStorage):
             logger.warning("No attributes found in the graph vertices.")
             return []
         logger.info(f"Selecting vertices with attributes: {self._graph.vs.attributes()} with {attrs}")
+        attrs["label"] = label
         ret: ig.VertexSeq = self._graph.vs.select(**attrs)
 
         indexs = ret.indices
@@ -98,10 +100,12 @@ class IGraphStore(GraphStorage):
             return self._graph.es[name]
         return []
 
-    def add_vertices(self, nodes: List[Dict[str, Any]]):
+    def add_vertices(self, label: str, nodes: List[Dict[str, Any]]):
         """Add vertices to the graph with the given attributes."""
         attributes: Dict[str, List[Any]] = {}
-        for node in nodes:
+        new_nodes = copy.deepcopy(nodes)
+        for node in new_nodes:
+            node["label"] = label
             for k, v in node.items():
                 if k not in attributes:
                     attributes[k] = []
@@ -113,6 +117,7 @@ class IGraphStore(GraphStorage):
 
     def personalized_pagerank(
         self,
+        label: str,
         vertices_with_weight: Dict[str, float],
         damping: float = 0.85,
         top_k: int = 10,
@@ -125,12 +130,12 @@ class IGraphStore(GraphStorage):
             logger.warning("No vertices with weights provided. Using all vertices.")
             raise ValueError("No vertices with weights provided.")
         keys = list(vertices_with_weight.keys())
-        ret: ig.VertexSeq = self._graph.vs.select(name_in=keys)
+        ret: ig.VertexSeq = self._graph.vs.select(name_in=keys, label=label)
         if not ret:
             return {}
         indexs = ret.indices
         vertices = {k: ret.get_attribute_values(k) for k in ret.attributes()}
-        vcount = self._graph.vcount()
+        vcount = len(self._graph.vs.select(label=label).get_attribute_values("name"))
         reset_prob = np.zeros(vcount)
         key_to_index = {key: index for key, index in zip(vertices["name"], indexs)}
         for key, weight in vertices_with_weight.items():
@@ -158,9 +163,9 @@ class IGraphStore(GraphStorage):
         self._graph.write_pickle(path)
         logger.info(f"Graph saved to {path}.")
 
-    def vertices_count(self) -> int:
+    def vertices_count(self, label: str) -> int:
         """Return the number of vertices in the graph."""
-        return self._graph.vcount()
+        return self._graph.vs.select(label=label).vcount()
 
     def get_by_ids(self, ids: List[str]) -> List[Document]:
         """Get vertices by their IDs."""
@@ -173,7 +178,7 @@ class IGraphStore(GraphStorage):
             documents.append(doc)
         return documents
 
-    def add_new_edges(self, node_to_node_stats: Dict[Tuple[str, str], float]):
+    def add_new_edges(self, label, node_to_node_stats: Dict[Tuple[str, str], float]):
         """
         Processes edges from `node_to_node_stats` to add them into a graph object while
         managing adjacency lists, validating edges, and logging invalid edge cases.
@@ -198,8 +203,8 @@ class IGraphStore(GraphStorage):
         valid_edges: List[Tuple[str, str]] = []
         valid_weights: List[float] = []
 
-        source_nodes = self.select_vertices(dict(name_in=edge_source_node_keys))
-        target_nodes = self.select_vertices(dict(name_in=edge_target_node_keys))
+        source_nodes = self.select_vertices(label, attrs=dict(name_in=edge_source_node_keys))
+        target_nodes = self.select_vertices(label, attrs=dict(name_in=edge_target_node_keys))
         logger.info(
             f"Found {source_nodes} source nodes from {edge_source_node_keys} and {target_nodes} \
                     target nodes from {edge_target_node_keys}."

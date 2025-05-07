@@ -13,5 +13,5 @@ class LangchainEmbeddings(Embeddings):
         return ret
 
     def embed_query(self, query: str) -> List[float]:
-        ret = self.embedder.encode_query([query]).tolist()
+        ret = self.embedder.encode_query(query).tolist()
         return ret

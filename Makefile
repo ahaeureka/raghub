@@ -13,7 +13,8 @@ endif
 # Get modified/added Python files from git
 GIT_MODIFIED_FILES = $(shell git diff --name-only --diff-filter=d --relative packages | grep '\.py$$')
 GIT_STAGED_FILES = $(shell git diff --cached --name-only --diff-filter=d --relative packages | grep '\.py$$')
-GIT_FILES = $(sort $(GIT_MODIFIED_FILES) $(GIT_STAGED_FILES))
+GIT_UNTRACKED_FILES = $(shell git ls-files --others --exclude-standard | grep '\.py$$')
+GIT_FILES = $(sort $(GIT_MODIFIED_FILES) $(GIT_STAGED_FILES) $(GIT_UNTRACKED_FILES))
 
 setup: $(VENV)/bin/activate
 

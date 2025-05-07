@@ -16,19 +16,19 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def add_documents(self, texts: List[Document]) -> List[Document]:
+    def add_documents(self, index_name: str, texts: List[Document]) -> List[Document]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get_by_ids(self, ids: List[str]) -> List[Document]:
+    def get_by_ids(self, index_name: str, ids: List[str]) -> List[Document]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get(self, uid: str) -> Document:
+    def get(self, index_name: str, uid: str) -> Document:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def select_on_metadata(self, metadata_filter: Dict[str, Any]) -> List[Document]:
+    def select_on_metadata(self, index_name: str, metadata_filter: Dict[str, Any]) -> List[Document]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
@@ -45,11 +45,11 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
 
     @abstractmethod
     def similarity_search_by_vector(
-        self, embedding: List[float], k: int, filter: Optional[Dict[str, str]] = None
+        self, index_name: str, embedding: List[float], k: int, filter: Optional[Dict[str, str]] = None
     ) -> List[Tuple[Document, float]]:
         raise NotImplementedError("Subclasses should implement this method.")
 
-    def add_documents_filter_exists(self, texts: List[Document]) -> List[Document]:
+    def add_documents_filter_exists(self, index_name: str, texts: List[Document]) -> List[Document]:
         """
         Add documents to the vector storage, filtering out those that already exist.
         Args:
@@ -59,7 +59,7 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
             List of Document objects that were added.
         """
         # Check if the document already exists in the storage
-        existing_docs = self.get_by_ids([doc.uid for doc in texts])
+        existing_docs = self.get_by_ids(index_name, [doc.uid for doc in texts])
         existing_ids = {doc.uid for doc in existing_docs}
 
         # Filter out documents that already exist
@@ -68,7 +68,7 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
         # Add new documents to the storage
         if new_docs:
             logger.debug(f"add_documents_filter_exists:Adding {new_docs} new documents to the vector storage.")
-            self.add_documents(new_docs)
+            self.add_documents(index_name, new_docs)
 
         return new_docs
 
@@ -105,7 +105,6 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
         )  # Assuming Document has an embedding attribute
         query_ids = [doc.uid for doc in query_docs]
         target_ids = [doc.uid for doc in target_docs]
-        print(f"vector knn query_vecs: {query_vecs}")
         query_tensor_vecs = torch.tensor(query_vecs, dtype=torch.float32)
         query_tensor_vecs = torch.nn.functional.normalize(query_tensor_vecs, dim=1)
 
