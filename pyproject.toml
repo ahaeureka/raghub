@@ -1,5 +1,5 @@
 [project]
-name = "deeprag"
+name = "raghub"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -24,10 +24,10 @@ managed = true
 
 [tool.uv.workspace]
 members = [
- "packages/deeprag-core",
- "packages/deeprag-interfaces",
- "packages/deeprag-app",
- "packages/deeprag-ext",
+ "packages/raghub-core",
+ "packages/raghub-interfaces",
+ "packages/raghub-app",
+ "packages/raghub-ext",
 ]
 
 [[tool.uv.index]]

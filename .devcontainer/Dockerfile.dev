@@ -1,4 +1,4 @@
-FROM deeprag:latest
+FROM raghub:latest
 ARG PYTHON_VERSION=3.11
 ARG PIP_INDEX_URL="https://mirrors.aliyun.com/pypi/simple/"
 ARG USERNAME
@@ -42,4 +42,4 @@ RUN pip config set global.index-url $PIP_INDEX_URL && \
     pip config set global.trusted-host $(echo "$PIP_INDEX_URL" | sed -E 's|^https?://([^/]+).*|\1|') && \
     . $VIRTUAL_ENV/bin/activate  && \
     uv sync -v --active --all-packages --default-index $PIP_INDEX_URL --index-strategy unsafe-best-match --prerelease=allow --no-build-isolation && \
-    cp .devcontainer/project.pth  /opt/.uv.venv/lib/python${PYTHON_VERSION}/site-packages/deeprag.pth
+    cp .devcontainer/project.pth  /opt/.uv.venv/lib/python${PYTHON_VERSION}/site-packages/raghub.pth

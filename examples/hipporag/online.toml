@@ -1,10 +1,10 @@
-app_name = "deeprag"
+app_name = "raghub"
 app_version = "0.1.0"
-app_description = "DeepRAG Application"
+app_description = "RAGHub Application"
 
 [logger]
 log_level = "DEBUG"
-log_dir = "/app/output/deeprag/logs"
+log_dir = "/app/output/raghub/logs"
 
 [rag.llm]
 model = "${env:LLM_MODEL_NAME:-qwen-plus}"
@@ -28,16 +28,16 @@ lang = "en"
 [vector_storage]
 provider = "elasticsearch_vector"
 collection_name = "default_collection"
-persist_directory = "/app/output/.deeprag/cache/chroma_db"
+persist_directory = "/app/output/.raghub/cache/chroma_db"
 
 [graph]
 provider = "neo4j"
-graph_path = "/app/output/.deeprag/storage/graphs/default_graph.pkl"
+graph_path = "/app/output/.raghub/storage/graphs/default_graph.pkl"
 url = "neo4j://127.0.0.1:7687"
 
 [database]
 provider = "sqlite"
-db_url = "sqlite://app/output/.deeprag/app.db"
+db_url = "sqlite://app/output/.raghub/app.db"
 
 [hipporag]
 synonymy_edge_topk = 2047
@@ -52,14 +52,14 @@ storage_provider="hipporag_storage_online"
 
 [cache]
 provider = "redis_cache"
-cache_dir = "/app/output/.deeprag/cache"
+cache_dir = "/app/output/.raghub/cache"
 host="127.0.0.1"
 port=6379
 [search_engine]
 provider = "elasticsearch"
 host = "localhost"
 port = 9200
-index_name_prefix="deeprag_index"
+index_name_prefix="raghub_index"
 
 
 

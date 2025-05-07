@@ -1,6 +1,6 @@
 /app
-/app/packages/deeprag-core/src
-/app/packages/deeprag-app/src
-/app/packages/deeprag-interfaces/src
-/app/packages/deeprag-ext/src
+/app/packages/raghub-core/src
+/app/packages/raghub-app/src
+/app/packages/raghub-interfaces/src
+/app/packages/raghub-ext/src
 /app/submodules/hipporag/src

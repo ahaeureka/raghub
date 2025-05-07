@@ -14,7 +14,7 @@
     "updateRemoteUserUID": false,
     "remoteUser": "${localEnv:USER}",
     "initializeCommand": ".devcontainer/init_env.sh",
-    "name": "deeprag",
+    "name": "raghub",
     "workspaceFolder": "/app",
     "workspaceMount": "source=${localWorkspaceFolder},target=/app,type=bind",
     "runArgs": [
@@ -44,7 +44,6 @@
                 "terminal.integrated.defaultProfile.linux": "zsh",
                 "editor.defaultFormatter": "charliermarsh.ruff"
             },
-
             "extensions": [
                 "ms-python.python",
                 "ms-python.isort",

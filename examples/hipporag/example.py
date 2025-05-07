@@ -1,14 +1,13 @@
-from enum import unique
-from deeprag_app.apps.hipporag.hipporag_app import HippoRAG
-from deeprag_app.config.config_models import APPConfig
-from deeprag_core.config.manager import ConfigLoader
-from deeprag_core.schemas.document import Document
-from deeprag_core.utils.misc import compute_mdhash_id
+from raghub_app.apps.hipporag.hipporag_app import HippoRAG
+from raghub_app.config.config_models import APPConfig
+from raghub_core.config.manager import ConfigLoader
+from raghub_core.schemas.document import Document
+from raghub_core.utils.misc import compute_mdhash_id
 
 
 def main():
-    # shutil.rmtree("/app/output/.deeprag", ignore_errors=True)
-    from deeprag_ext import storage  # noqa: F401
+    # shutil.rmtree("/app/output/.raghub", ignore_errors=True)
+    from raghub_ext import storage_ext  # noqa: F401
 
     # app_config = ConfigLoader.load(cls=APPConfig, file_path="/app/examples/hipporag/online.toml")
     app_config = ConfigLoader.load(cls=APPConfig, file_path="/app/.devcontainer/dev.toml")
@@ -28,13 +27,13 @@ def main():
         "Marina is bom in Minsk.",
         "Montebello is a part of Rockland County.",
     ]
-    docs = impl.add_documents(unique_name,[Document(content=doc, uid=compute_mdhash_id(doc, "doc")) for doc in docs])
+    docs = impl.add_documents(unique_name, [Document(content=doc, uid=compute_mdhash_id(doc, "doc")) for doc in docs])
     queries = [
         "What is George Rankin's occupation?",
         # "How did Cinderella reach her happy ending?",
         # "What county is Erik Hort's birthplace a part of?",
     ]
-    retrieve_docs = impl.retrieve(unique_name,queries=queries)
+    retrieve_docs = impl.retrieve(unique_name, queries=queries)
     for doc in retrieve_docs:
         print(doc.query, doc.document.content, doc.score)
     impl.delete(unique_name, [doc.uid for doc in docs])
