@@ -4,6 +4,7 @@ ARG PIP_INDEX_URL="https://mirrors.aliyun.com/pypi/simple/"
 ARG USE_MIRROR_UBUNTU="true"
 ARG USE_CUDA="true"
 ARG DEFAULT_VENV=/opt/.uv.venv
+ARG EXTRAS="online"
 ENV PYTHON_VERSION=3.11
 WORKDIR /app
 COPY . .
@@ -42,5 +43,6 @@ ENV UV_LINK_MODE=copy \
 RUN pip config set global.index-url $PIP_INDEX_URL && \
     pip config set global.trusted-host $(echo "$PIP_INDEX_URL" | sed -E 's|^https?://([^/]+).*|\1|') && \
     . $DEFAULT_VENV/bin/activate  && \
-    uv sync -v --active --all-packages --default-index $PIP_INDEX_URL --index-strategy unsafe-best-match --prerelease=allow --no-build-isolation && \
+    extras=$(echo $EXTRAS | tr ',' '\n' | while read extra; do echo "--extra $extra"; done | tr '\n' ' ') && \
+    uv sync -v --active --all-packages --default-index $PIP_INDEX_URL --index-strategy unsafe-best-match $extras --prerelease=allow --no-build-isolation && \
     echo "/app" >> /opt/.uv.venv/lib/python${PYTHON_VERSION}/site-packages/.pth

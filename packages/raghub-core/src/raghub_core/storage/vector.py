@@ -1,8 +1,7 @@
 from abc import abstractmethod
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from git import Optional
 from loguru import logger
 from raghub_core.schemas.document import Document
 from raghub_core.utils.class_meta import SingletonRegisterMeta
@@ -16,23 +15,23 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def add_documents(self, index_name: str, texts: List[Document]) -> List[Document]:
+    async def add_documents(self, index_name: str, texts: List[Document]) -> List[Document]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get_by_ids(self, index_name: str, ids: List[str]) -> List[Document]:
+    async def get_by_ids(self, index_name: str, ids: List[str]) -> List[Document]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get(self, index_name: str, uid: str) -> Document:
+    async def get(self, index_name: str, uid: str) -> Document:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def select_on_metadata(self, index_name: str, metadata_filter: Dict[str, Any]) -> List[Document]:
+    async def select_on_metadata(self, index_name: str, metadata_filter: Dict[str, Any]) -> List[Document]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete(self, index_name: str, ids: List[str]) -> bool:
+    async def delete(self, index_name: str, ids: List[str]) -> bool:
         """
         Delete documents by their IDs from the vector storage.
         Args:
@@ -45,12 +44,28 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def similarity_search_by_vector(
+    async def similarity_search_by_vector(
         self, index_name: str, embedding: List[float], k: int, filter: Optional[Dict[str, str]] = None
     ) -> List[Tuple[Document, float]]:
         raise NotImplementedError("Subclasses should implement this method.")
 
-    def add_documents_filter_exists(self, index_name: str, texts: List[Document]) -> List[Document]:
+    @abstractmethod
+    async def asimilar_search_with_scores(
+        self, index_name: str, query: str, k: int, filter: Optional[Dict[str, str]] = None
+    ) -> List[Tuple[Document, float]]:
+        """
+        Perform a similarity search in the vector storage using a query string.
+        Args:
+            index_name: Name of the index to search in.
+            query: Query string to search for.
+            k: Number of top results to return.
+            filter: Optional filter for the search.
+        Returns:
+            List[Tuple[Document, float]]: List of tuples containing the matching documents and their similarity scores.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    async def add_documents_filter_exists(self, index_name: str, texts: List[Document]) -> List[Document]:
         """
         Add documents to the vector storage, filtering out those that already exist.
         Args:
@@ -60,7 +75,7 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
             List of Document objects that were added.
         """
         # Check if the document already exists in the storage
-        existing_docs = self.get_by_ids(index_name, [doc.uid for doc in texts])
+        existing_docs = await self.get_by_ids(index_name, [doc.uid for doc in texts])
         existing_ids = {doc.uid for doc in existing_docs}
 
         # Filter out documents that already exist
@@ -69,7 +84,7 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
         # Add new documents to the storage
         if new_docs:
             logger.debug(f"add_documents_filter_exists:Adding {new_docs} new documents to the vector storage.")
-            self.add_documents(index_name, new_docs)
+            await self.add_documents(index_name, new_docs)
 
         return new_docs
 

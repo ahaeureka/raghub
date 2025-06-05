@@ -14,12 +14,14 @@ class OpenIEOperator(BaseOpenIE):
         self._re_operator = re_operator
         super().__init__()
 
-    def extract(self, text: str, lang: str = "zh") -> OpenIEModel:
-        ner_output = self._ner_operator.execute({"paragraph": text}, lang=lang)
-        re_output = self._re_operator.execute(
+    async def extract(self, text: str, lang: str = "zh") -> OpenIEModel:
+        ner_output = await self._ner_operator.execute({"paragraph": text}, lang=lang)
+
+        re_output = await self._re_operator.execute(
             {"passage": text, "named_entity_json": json.dumps(ner_output.model_dump(), ensure_ascii=False)},
             lang=lang,
         )
+
         # Combine the outputs from NER and RDF operators
         return OpenIEModel(
             ner=ner_output.named_entities,

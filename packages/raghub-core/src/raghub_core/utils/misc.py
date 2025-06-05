@@ -2,6 +2,7 @@ from hashlib import md5
 from typing import List, Type
 
 import numpy as np
+from raghub_core.schemas.document import Document
 from sqlmodel import SQLModel
 
 
@@ -42,3 +43,32 @@ def get_primary_key_names(model_class: Type[SQLModel]) -> List[str]:
     #     # If the model has a primary key, return its names
     #     return [col.name for col in mapper.primary_key]
     # return []
+
+
+def detect_language(text) -> str:
+    import langid
+
+    # langid.classify 返回一个元组 (语言代码, 置信度)
+    lang, _ = langid.classify(text)
+    return lang
+
+
+def docs_duplicate_filter_recommended(docs: List[Document]) -> List[Document]:
+    """
+    Remove duplicates from a list while preserving the order.
+
+    Args:
+        docs (List[Document]): The input list of Document objects.
+
+    Returns:
+        List[Document]: A new list with duplicates removed.
+    """
+    seen_uids = set()
+    unique_docs = []
+
+    for doc in docs:
+        if doc.uid not in seen_uids:
+            seen_uids.add(doc.uid)
+            unique_docs.append(doc)
+
+    return unique_docs

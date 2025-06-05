@@ -34,7 +34,7 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
             search_engine_config.provider, SearchEngineStorage, **search_engine_config.model_dump()
         )
 
-    def create_new_index(self, label: str):
+    async def create_new_index(self, label: str):
         index_body = {
             "mappings": {
                 "properties": {
@@ -70,7 +70,7 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
                 }
             },
         }
-        self._search_engine.create_index(label, index_mapping=index_body)
+        await self._search_engine.create_index(label, index_mapping=index_body)
 
     def init(self):
         super().init()
@@ -119,18 +119,18 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
             is_deleted=openie_info.is_deleted,
         )
 
-    def save_openie_info(self, label: str, openie_info: List[OpenIEInfo]):
+    async def save_openie_info(self, label: str, openie_info: List[OpenIEInfo]):
         """
         Save OpenIE information to the storage.
         Args:
             openie_info (List[OpenIEInfo]): A list of OpenIEInfo objects to be saved.
         """
 
-        self._search_engine.insert_document(
+        await self._search_engine.insert_document(
             label, documents=[self._openie_to_elastic_model(info) for info in openie_info]
         )
 
-    def get_openie_info(self, label: str, keys: List[str]) -> List[OpenIEInfo]:
+    async def get_openie_info(self, label: str, keys: List[str]) -> List[OpenIEInfo]:
         """
         Retrieve OpenIE information from the storage.
         Args:
@@ -138,7 +138,7 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
         Returns:
             List[OpenIEInfo]: A list of OpenIEInfo objects retrieved from the storage.
         """
-        docs = self._search_engine.get_documents(
+        docs = await self._search_engine.get_documents(
             label,
             query={"query": {"terms": {"idx": keys}}},
             model_cls=OpenIEInfo,
@@ -148,15 +148,15 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
         openie_info_list = [self._elastic_model_to_openie(doc) for doc in docs]
         return openie_info_list
 
-    def delete_openie_info(self, label: str, keys: List[str]):
+    async def delete_openie_info(self, label: str, keys: List[str]):
         """
         Delete OpenIE information from the storage.
         Args:
             keys (List[str]): A list of keys to delete OpenIE information.
         """
-        self._search_engine.delete_documents(label, keys=keys)
+        await self._search_engine.delete_documents(label, keys=keys)
 
-    def get_docs_from_triples(self, label: str, triples: Tuple[str, str, str]) -> List[str]:
+    async def get_docs_from_triples(self, label: str, triples: Tuple[str, str, str]) -> List[str]:
         """
         Retrieve the documents associated with a given triple from the cache.
         Args:
@@ -167,19 +167,16 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
         key = self.get_triples_to_docs_cache_key(triples)
         if not self._cache:
             raise ValueError("Cache is not initialized")
-        ret = self._cache.get(key)
+        ret = await self._cache.aget(key)
         if ret:
             return json.loads(ret)
-        # 如果缓存中没有，则从数据库中查询
-        docs = self.get_docs_from_es_use_triples(label, triples)  # noqa: F811
+        docs = await self.get_docs_from_es_use_triples(label, triples)  # noqa: F811
         if docs:
-            # 将查询结果存入缓存
-
-            self._cache.set(key, json.dumps(docs, ensure_ascii=False))
+            await self._cache.aset(key, json.dumps(docs, ensure_ascii=False))
             return docs
         return []
 
-    def get_docs_from_es_use_triples(self, label: str, triples: Tuple[str, str, str]) -> List[str]:
+    async def get_docs_from_es_use_triples(self, label: str, triples: Tuple[str, str, str]) -> List[str]:
         query = {
             "query": {
                 "should": [
@@ -201,7 +198,7 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
                 "minimum_should_match": 1,
             }
         }
-        docs = self._search_engine.get_documents(
+        docs = await self._search_engine.get_documents(
             label,
             query=query,
             model_cls=OpenIEInfo,

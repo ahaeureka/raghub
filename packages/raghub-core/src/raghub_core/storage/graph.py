@@ -1,7 +1,8 @@
 from abc import abstractmethod
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from raghub_core.schemas.document import Document
+from raghub_core.schemas.graph_model import GraphCommunity, GraphEdge, GraphModel, GraphVertex
 from raghub_core.utils.class_meta import SingletonRegisterMeta
 
 
@@ -10,15 +11,19 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
 
     # _registry: Dict[str, Type["GraphStorage"]] = {}  # 注册表
     @abstractmethod
-    def init(self):
+    async def init(self):
         raise NotImplementedError("Subclasses should implement this `init` method.")
 
     @abstractmethod
-    def add_new_edges(self, label: str, node_to_node_stats: Dict[Tuple[str, str], float]) -> None:
+    async def aadd_new_edges(self, label: str, edges: List[GraphEdge]):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get_by_ids(self, ids: List[str]) -> List[Document]:
+    async def aadd_graph_edges(self, label: str, edges: List[GraphEdge]):
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def aget_by_ids(self, ids: List[str]) -> List[Document]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     # @abstractmethod
@@ -26,7 +31,21 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
     #     raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def add_vertices(self, label: str, nodes: List[Dict[str, Any]]) -> None:
+    async def aadd_vertices(self, label: str, nodes: List[GraphVertex]):
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def aadd_graph_vertices(self, label: str, nodes: List[GraphVertex]):
+        """
+        Add graph vertices to the storage.
+
+        Args:
+            label (str): The label of the vertices.
+            nodes (List[GraphVertex]): A list of GraphVertex objects to be added.
+
+        Returns:
+            None
+        """
         raise NotImplementedError("Subclasses should implement this method.")
 
     # @abstractmethod
@@ -34,11 +53,11 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
     #     raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def vertices_count(self, label: str) -> int:
+    async def avertices_count(self, label: str) -> int:
         raise NotImplementedError("Subclasses should implement this `vertices_count` method.")
 
     @abstractmethod
-    def personalized_pagerank(
+    def apersonalized_pagerank(
         self,
         label: str,
         vertices_with_weight: Dict[str, float],
@@ -49,12 +68,169 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def select_vertices(self, label, attrs: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def aupdate_vertices(self, label: str, nodes: List[GraphVertex]) -> List[GraphVertex]:
+        """
+        Update existing vertices in the graph.
+
+        Args:
+            label (str): The label of the vertices to be updated.
+            nodes (List[GraphVertex]): A list of GraphVertex objects to be updated.
+
+        Returns:
+            List[GraphVertex]: A list of updated GraphVertex objects.
+        """
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete_vertices(self, label: str, keys: List[str]) -> None:
+    async def aupdate_edges(self, label: str, edges: List[GraphEdge]) -> List[GraphEdge]:
+        """
+        Update existing edges in the graph.
+
+        Args:
+            label (str): The label of the edges to be updated.
+            edges (List[GraphEdge]): A list of GraphEdge objects to be updated.
+
+        Returns:
+            List[GraphEdge]: A list of updated GraphEdge objects.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def aupsert_virtices(self, unique_name: str, vertices: List[GraphVertex]) -> List[GraphVertex]:
+        """
+        Upsert vertices in the graph.
+
+        Args:
+            unique_name (str): The unique name of the vertices.
+            vertices (List[GraphVertex]): A list of GraphVertex objects to be upserted.
+
+        Returns:
+            List[GraphVertex]: A list of upserted GraphVertex objects.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def aupsert_edges(self, unique_name: str, edges: List[GraphEdge]) -> List[GraphEdge]:
+        """
+        Upsert edges in the graph.
+
+        Args:
+            unique_name (str): The unique name of the edges.
+            edges (List[GraphEdge]): A list of GraphEdge objects to be upserted.
+
+        Returns:
+            List[GraphEdge]: A list of upserted GraphEdge objects.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def aselect_vertices(self, label, attrs: Dict[str, Any]) -> List[GraphVertex]:
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def aselect_edges(self, label: str, attrs: Dict[str, Any]) -> List[GraphEdge]:
+        """
+        Select edges from the graph based on source and target vertices.
+
+        Args:
+            label: The name of the label to use for the search.
+            source: The source vertex ID.
+            target: The target vertex ID.
+
+        Returns:
+            A list of GraphEdge objects representing the edges between the source and target vertices.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def adelete_vertices(self, label: str, keys: List[str]):
         """Delete vertices from the graph."""
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def discover_communities(
+        self, label, resolution_parameter=0.8, beta=0.1, n_iterations=-1, **kwargs
+    ) -> List[str]:
+        """
+        Discover communities in the graph using the Louvain method.
+
+        Args:
+            label: The label of the vertices to be clustered.
+            resolution_parameter: The resolution parameter for the Louvain method.
+            beta: The beta parameter for the Louvain method.
+            n_iterations: The number of iterations for the Louvain method.
+
+        Returns:
+            A list of community labels for each vertex in the graph.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def get_community(self, label: str, community_id: str) -> GraphCommunity:
+        """
+        Get the community of a specific vertex.
+
+        Args:
+            label: The label of the vertices to be clustered.
+            community_id: The ID of the community to retrieve.
+
+        Returns:
+            A list of vertices in the specified community.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    def graph_vertices2nodes(self, vertices: List[GraphVertex]) -> List[Dict[str, Any]]:
+        """
+        Convert a list of GraphVertex objects to a list of dictionaries.
+
+        Args:
+            vertices: A list of GraphVertex objects.
+
+        Returns:
+            A list of dictionaries representing the vertices.
+        """
+        return [vertex.model_dump() for vertex in vertices]
+
+    @abstractmethod
+    async def multi_hop_search(
+        self,
+        label: str,
+        start_nodes_id: List[str],
+        relation_path: List[str] = [],
+        max_hops: int = 3,
+        rel_type: str = "",
+        max_paths: int = 10,
+        continuous=False,
+    ) -> GraphModel | None:
+        """
+        Perform a multi-hop search in the graph.
+
+        Args:
+            label: The label of the vertices to be searched.
+            namespace: The namespace of the vertices to be searched.
+            start_nodes_id: A list of starting node IDs for the search.
+            rel_type: The type of relationship to follow during the search.
+            max_hops: The maximum number of hops to traverse in the graph.
+            limit: The maximum number of results to return.
+
+        Returns:
+            A GraphModel containing the results of the multi-hop search.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def freestyle_search(self, label: str, entities: List[str], max_hops: int = 3) -> GraphModel | None:
+        """
+        Perform a freestyle search in the graph.
+
+        Args:
+            label: The label of the vertices to be searched.
+            entities: A list of entities to search for.
+            max_hops: The maximum number of hops to traverse in the graph.
+
+        Returns:
+            A GraphModel containing the results of the freestyle search.
+        """
         raise NotImplementedError("Subclasses should implement this method.")
 
     def transform_logic_operators(self, attr: Dict[str, Any]) -> str:

@@ -206,3 +206,6 @@ results
 .venv.make
 .venv.make/
 .mypy_cache
+cache/
+.ruff_cache/
+.cache/

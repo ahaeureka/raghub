@@ -4,6 +4,8 @@ ARG PIP_INDEX_URL="https://mirrors.aliyun.com/pypi/simple/"
 ARG USERNAME
 # Add parameter to control whether to use Tsinghua Ubuntu mirror
 ARG USE_MIRROR_UBUNTU="true"
+ARG EXTRAS="online"
+
 ARG EXTRAS=""
 WORKDIR /app
 COPY . .
@@ -41,5 +43,6 @@ ENV LANG=zh_CN.UTF-8 \
 RUN pip config set global.index-url $PIP_INDEX_URL && \
     pip config set global.trusted-host $(echo "$PIP_INDEX_URL" | sed -E 's|^https?://([^/]+).*|\1|') && \
     . $VIRTUAL_ENV/bin/activate  && \
-    uv sync -v --active --all-packages --default-index $PIP_INDEX_URL --index-strategy unsafe-best-match --prerelease=allow --no-build-isolation && \
+    extras=$(echo $EXTRAS | tr ',' '\n' | while read extra; do echo "--extra $extra"; done | tr '\n' ' ') && \
+    uv sync -v --active --all-packages --default-index $PIP_INDEX_URL $extras --index-strategy unsafe-best-match --prerelease=allow --no-build-isolation && \
     cp .devcontainer/project.pth  /opt/.uv.venv/lib/python${PYTHON_VERSION}/site-packages/raghub.pth

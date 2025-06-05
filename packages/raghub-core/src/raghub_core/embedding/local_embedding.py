@@ -3,8 +3,8 @@ from typing import List, Optional
 
 import numpy as np
 import torch
+from langchain_core.runnables.config import run_in_executor
 from raghub_core.embedding.base_embedding import BaseEmbedding
-from raghub_core.embedding.embedding_helper import EmbeddingHelper
 
 
 class LocalEmbedding(BaseEmbedding):
@@ -62,16 +62,34 @@ class BGEEmbedding(LocalEmbedding):
         )
         return self._model
 
-    def encode(self, texts: List[str], instruction: str = "为这个句子生成表示以用于检索相关文章：") -> np.ndarray:
-        texts = [EmbeddingHelper.truncate(t, 2048) for t in texts]
+    def encode(self, texts: List[str], instruction: Optional[str] = None) -> np.ndarray:
         ress = []
         for i in range(0, len(texts), self._batch_size):
             ress.extend(self._model.encode(texts[i : i + self._batch_size], instruction=instruction).tolist())
         return np.array(ress)
 
     def encode_query(self, text: str, instruction: str = "为这个句子生成表示以用于检索相关文章：") -> np.ndarray:
-        texts = [EmbeddingHelper.truncate(t, 2048) for t in [text]]
+        results = self._model.encode_queries([text], instruction=instruction)
+        return np.array(results.tolist()[0])
+
+    async def aencode(self, texts: List[str], instruction: Optional[str] = None) -> np.ndarray:
         ress = []
         for i in range(0, len(texts), self._batch_size):
-            ress.extend(self._model.encode_queries(texts[i : i + self._batch_size], instruction=instruction).tolist())
-        return np.array(ress)[0]
+            ress.extend(
+                await run_in_executor(
+                    None, self._model.encode, texts[i : i + self._batch_size], instruction=instruction
+                ).tolist()
+            )
+        return np.array(ress)
+
+    async def aencode_query(
+        self, texts: List[str], instruction: str = "为这个句子生成表示以用于检索相关文章："
+    ) -> np.ndarray:
+        ress = []
+        for i in range(0, len(texts), self._batch_size):
+            ress.extend(
+                await run_in_executor(
+                    None, self._model.encode_queries, texts[i : i + self._batch_size], instruction=instruction
+                ).tolist()
+            )
+        return np.array(ress)

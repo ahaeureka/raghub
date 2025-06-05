@@ -55,3 +55,13 @@ class Embbedder(BaseEmbedding):
         if self.embbedder is None:
             raise ValueError("Embedder is not initialized. Please call `initialize` method first.")
         return self.embbedder.encode_query(query, instruction)
+
+    async def aencode(self, texts: List[str], instruction: Optional[str] = None) -> np.ndarray:
+        if self.embbedder is None:
+            raise ValueError("Embedder is not initialized. Please call `initialize` method first.")
+        return await self.embbedder.aencode(texts, instruction)
+
+    async def aencode_query(self, query: str, instruction: Optional[str] = None) -> np.ndarray:
+        if self.embbedder is None:
+            raise ValueError("Embedder is not initialized. Please call `initialize` method first.")
+        return await self.embbedder.aencode_query(query, instruction)

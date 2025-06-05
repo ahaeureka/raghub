@@ -8,15 +8,15 @@ from sqlmodel import SQLModel
 
 class StructedDataStorage(metaclass=SingletonRegisterMeta):
     @abstractmethod
-    def init(self):
+    async def init(self):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def add(self, data: SQLModel):
+    async def add(self, data: SQLModel):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get(self, keys: List[str], model_cls: type[SQLModel]) -> List[SQLModel]:
+    async def get(self, keys: List[str], model_cls: type[SQLModel]) -> List[SQLModel]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     # @abstractmethod
@@ -24,19 +24,19 @@ class StructedDataStorage(metaclass=SingletonRegisterMeta):
     #     raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete(self, keys: List[str], model_cls: type[SQLModel]):
+    async def delete(self, keys: List[str], model_cls: type[SQLModel]):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def exec(self, statement: Executable) -> Any:
+    async def exec(self, statement: Executable) -> Any:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get_engine(self):
+    async def get_engine(self):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def batch_add(self, data: list[SQLModel]):
+    async def batch_add(self, data: list[SQLModel]):
         raise NotImplementedError("Subclasses should implement this `batch_add` method.")
 
     @classmethod

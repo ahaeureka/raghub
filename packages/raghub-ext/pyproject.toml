@@ -4,8 +4,14 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-]
+
+[project.optional-dependencies]
+online = [
+    "elasticsearch[async]>=8.11.0",
+    "langchain-elasticsearch>=0.0.3",
+    "neo4j>=5.16.0",
+    "redis[hiredis]>=5.0.0"
+    ]
 
 [dependency-groups]
 es = [

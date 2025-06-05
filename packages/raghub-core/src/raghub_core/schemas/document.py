@@ -10,3 +10,4 @@ class Document(BaseModel):
     )
     uid: str = Field(None, description="Unique identifier for the document.")
     embedding: Optional[List[float]] = Field(None, description="Embedding vector of the document.")
+    summary: Optional[str] = Field(None, description="Summary of the document.")

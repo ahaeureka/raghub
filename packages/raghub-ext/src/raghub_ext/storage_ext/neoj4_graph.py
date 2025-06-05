@@ -1,7 +1,9 @@
-from typing import Any, Dict, List, Optional, Tuple
+import asyncio
+from typing import Any, Dict, List, Optional
 
 from loguru import logger
 from raghub_core.schemas.document import Document
+from raghub_core.schemas.graph_model import GraphEdge, GraphVertex
 from raghub_core.storage.graph import GraphStorage
 
 
@@ -14,31 +16,32 @@ class Neo4jGraphStorage(GraphStorage):
         self._user = username
         self._password = password
         try:
-            from neo4j import Driver
+            from neo4j import AsyncDriver
         except ImportError:
             raise ImportError("Neo4j is not installed. Please install it using `pip install neo4j`.")
 
-        self._driver: Optional[Driver] = None
+        self._driver: Optional[AsyncDriver] = None
 
-    def init(self):
+    async def init(self):
         """Initialize Neo4j driver connection."""
         if not self._driver:
             try:
-                from neo4j import GraphDatabase
+                from neo4j import AsyncGraphDatabase
 
-                self._driver = GraphDatabase.driver(self._uri, auth=(self._user, self._password))
+                await asyncio.sleep(0.01)  # Yield control to the event loop
+                self._driver = AsyncGraphDatabase.driver(self._uri, auth=(self._user, self._password))
                 logger.debug("Neo4j driver initialized successfully.")
             except Exception as e:
                 logger.error(f"Failed to initialize Neo4j driver: {e}")
                 raise
 
-    def close(self):
+    async def close(self):
         """Close Neo4j driver connection."""
         if self._driver:
-            self._driver.close()
+            await self._driver.close()
             logger.debug("Neo4j driver connection closed.")
 
-    def add_new_edges(self, label: str, node_to_node_stats: Dict[Tuple[str, str], float]):
+    async def aadd_new_edges(self, label: str, edges: List[GraphEdge]):
         """
         Add new edges to the graph.
 
@@ -47,25 +50,49 @@ class Neo4jGraphStorage(GraphStorage):
         """
         if not self._driver:
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
-        if not node_to_node_stats:
-            raise ValueError("Empty dictionary of edges provided")
-        logger.debug(f"Adding edges to neo4j: {node_to_node_stats}")
-        query = f"""
-        UNWIND $edges AS edge
-        MATCH (a:{label} {{name: edge[0]}}), 
-              (b:{label} {{name: edge[1]}})
-        MERGE (a)-[:RELATED {{weight: edge[2]}}]->(b)
-        """
-
         try:
-            with self._driver.session() as session:
-                session.run(query, edges=[(src, tgt, weight) for (src, tgt), weight in node_to_node_stats.items()])
-                logger.info(f"Added {len(node_to_node_stats)} edges:{[label for _ in range(len(node_to_node_stats))]}")
+            async with self._driver.session() as session:
+                tasks = []
+                for edge in edges:
+                    relation_type = edge.relation_type.value
+                    query = f"""
+                    MATCH (a:{label} {{name: $source}}), (b:{label} {{name: $target}})
+                    CREATE (a)-[r:`{relation_type}` {{
+                        weight: $weight,
+                        source_content: $source_content,
+                        target_content: $target_content,
+                        relation: $relation,
+                        description: $description,
+                        metadata: $edge_metadata,
+                        uid: $uid,
+                        label: $label
+                    }}]->(b)
+                    RETURN r
+                    """
+
+                    tasks.append(
+                        session.run(
+                            query,
+                            source=edge.source,
+                            target=edge.target,
+                            weight=edge.weight,
+                            source_content=edge.source_content,
+                            target_content=edge.target_content,
+                            relation=edge.relation,
+                            description=edge.description,
+                            metadata=edge.edge_metadata,
+                            uid=edge.uid,
+                            label=edge.label,
+                        )
+                    )
+                await asyncio.gather(*tasks)
+                logger.info(f"Successfully added {len(edges)} edges to the graph")
+
         except Exception as e:
             logger.error(f"Error adding edges: {e}")
             raise
 
-    def add_vertices(self, label: str, nodes: List[Dict[str, Any]]):
+    async def aadd_vertices(self, label: str, nodes: List[GraphVertex]):
         """
         Add vertices to the graph.
 
@@ -77,30 +104,37 @@ class Neo4jGraphStorage(GraphStorage):
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
         if not nodes:
             raise ValueError("Empty list of vertices provided")
-
+        # attrs = [f"n.{k}=" for k in list(nodes[0].model_dump().keys())]
         query = f"""
     UNWIND $nodes AS node
     MERGE (n:{label} {{name: node.uid}})
     ON CREATE SET
         n.name=node.uid, 
         n.content=node.content, 
-        n.namespace=node.metadata.namespace,
+        n.namespace=node.namespace,
         n.openie_idx=node.metadata.openie_idx,
         n.entities=node.metadata.entities,
         n.facts=node.metadata.facts,
         n.uid=node.uid, 
+        n.doc_id=node.doc_id,
+        n.description=node.description,
+        n.label=node.label,
+        n.index=node.index,
         n.embedding=node.embedding
     """
 
         try:
-            with self._driver.session() as session:
-                session.run(query, nodes=nodes)
+            async with self._driver.session() as session:
+                await session.run(query, nodes=[n.model_dump() for n in nodes])
             logger.info(f"Added {len(nodes)} vertices")
         except Exception as e:
             logger.error(f"Error adding vertices: {e}")
             raise
 
-    def select_vertices(self, label, attrs: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def aadd_graph_vertices(self, label: str, nodes: List[GraphVertex]):
+        pass
+
+    async def aselect_vertices(self, label, attrs: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Select vertices based on attributes.
 
@@ -115,18 +149,18 @@ class Neo4jGraphStorage(GraphStorage):
         if not self._driver:
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
         try:
-            with self._driver.session() as session:
+            async with self._driver.session() as session:
                 result = []
                 if not attrs:
-                    result = session.run(query)
+                    result = await session.run(query)
                 else:
-                    result = session.run(query, **attrs)
+                    result = await session.run(query, **attrs)
                 return [record["properties(n)"] for record in result]
         except Exception as e:
             logger.error(f"Error selecting vertices: {e}")
             raise
 
-    def delete_vertices(self, label: str, keys: List[str]) -> None:
+    async def adelete_vertices(self, label: str, keys: List[str]) -> None:
         """
         Delete vertices with specified names.
 
@@ -144,14 +178,14 @@ class Neo4jGraphStorage(GraphStorage):
         if not self._driver:
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
         try:
-            with self._driver.session() as session:
-                session.run(query, names=keys)
+            async with self._driver.session() as session:
+                await session.run(query, names=keys)
             logger.info(f"Deleted {len(keys)} vertices")
         except Exception as e:
             logger.error(f"Error deleting vertices: {e}")
             raise
 
-    def _query_node_ids(self, label: str, names: List[str], weights: List[float]) -> List[List[Any]]:
+    async def _query_node_ids(self, label: str, names: List[str], weights: List[float]) -> List[List[Any]]:
         query_get_ids = f"""
             UNWIND $pairs AS pair
             MATCH (n:{label} {{name: pair.name}})
@@ -159,12 +193,12 @@ class Neo4jGraphStorage(GraphStorage):
             """
         if not self._driver:
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
-        with self._driver.session() as session:
-            result = session.run(
+        async with self._driver.session() as session:
+            result = await session.run(
                 query_get_ids,
                 pairs=[{"name": name, "weight": weight} for name, weight in zip(names, weights)],
             )
-            record = result.single()
+            record = await result.single()
             if not record or not record["sourceNodes"]:
                 logger.warning("No source nodes found for the given names.")
                 return []
@@ -172,7 +206,7 @@ class Neo4jGraphStorage(GraphStorage):
             logger.debug(f"Source nodes: {source_nodes}")
             return source_nodes
 
-    def personalized_pagerank(
+    async def apersonalized_pagerank(
         self,
         label: str,
         vertices_with_weight: Dict[str, float],
@@ -195,8 +229,8 @@ class Neo4jGraphStorage(GraphStorage):
 
         try:
             # 检查图是否已存在
-            with self._driver.session() as session:
-                result = session.run(
+            async with self._driver.session() as session:
+                result = await session.run(
                     "CALL gds.graph.list() YIELD graphName RETURN graphName",
                 )
                 existing_graphs = [record["graphName"] for record in result]
@@ -212,7 +246,7 @@ class Neo4jGraphStorage(GraphStorage):
                     target,
                     {{ relationshipProperties: r {{ .weight }} }}
                     )"""
-                    ret = session.run(
+                    ret = await session.run(
                         create_graph_query,
                     )
                     logger.info(f"Graph projection created: {[record for record in ret]}")
@@ -236,8 +270,8 @@ class Neo4jGraphStorage(GraphStorage):
     LIMIT $topK
 """
             # logger.debug(f"Executing personalized PageRank with query: {source_nodes}")
-            with self._driver.session() as session:
-                result = session.run(
+            async with self._driver.session() as session:
+                result = await session.run(
                     query,
                     dict(
                         damping=damping,
@@ -256,14 +290,14 @@ class Neo4jGraphStorage(GraphStorage):
         """Neo4j data is automatically persisted in database"""
         logger.info("Neo4j graph data is automatically persisted in database")
 
-    def vertices_count(self, label) -> int:
+    async def vertices_count(self, label) -> int:
         """Return number of vertices in the graph"""
         if self._driver is None:
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
         try:
-            with self._driver.session() as session:
-                result = session.run(f"MATCH (n:{label}) RETURN count(n)")
-                return result.single()[0]
+            async with self._driver.session() as session:
+                result = await session.run(f"MATCH (n:{label}) RETURN count(n)")
+                return await result.single()[0]
         except Exception as e:
             logger.error(f"Error counting vertices: {e}")
             raise
@@ -291,7 +325,7 @@ class Neo4jGraphStorage(GraphStorage):
             embedding=vertex["embedding"],
         )
 
-    def get_by_ids(self, ids: List[str]) -> List[Document]:
+    async def aaget_by_ids(self, ids: List[str]) -> List[Document]:
         """
         Retrieve documents by their IDs.
 
@@ -304,8 +338,8 @@ class Neo4jGraphStorage(GraphStorage):
         if not self._driver:
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
         try:
-            with self._driver.session() as session:
-                result = session.run(
+            async with self._driver.session() as session:
+                result = await session.run(
                     """
                     UNWIND $ids AS id
                     MATCH (n {name: id})

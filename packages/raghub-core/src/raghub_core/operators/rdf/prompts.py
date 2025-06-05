@@ -120,3 +120,7 @@ Paragraph:
         )
 
         return prompt_template
+
+
+class REPWithSummaryPrompt(BasePrompt):
+    pass

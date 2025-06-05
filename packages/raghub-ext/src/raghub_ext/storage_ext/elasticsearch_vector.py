@@ -25,7 +25,8 @@ class ElasticsearchVectorStorage(VectorStorage):
         index_name_prefix: str = "raghub_index",
     ):
         try:
-            from elasticsearch import Elasticsearch
+            from elasticsearch import AsyncElasticsearch, Elasticsearch
+
         except ImportError:
             raise ImportError("Please install langchain_elasticsearch with pip install langchain_elasticsearch")
 
@@ -36,32 +37,40 @@ class ElasticsearchVectorStorage(VectorStorage):
         self._verify_certs = verify_certs
         self._http_auth = (username, password) if username and password else None
         self._client: Optional[Elasticsearch] = None
+        self._async_client: Optional[AsyncElasticsearch] = None
         self._index_name_prefix = index_name_prefix
 
-    def init(self):
+    async def init(self):
         """
-        初始化 ElasticsearchStore 并创建索引（如果不存在）
+        Initialize Elasticsearch client
         """
         try:
-            from elasticsearch import Elasticsearch
+            from elasticsearch import AsyncElasticsearch, Elasticsearch
 
-            # 创建 Elasticsearch 客户端
-            self._client = Elasticsearch(
-                hosts=[f"http://{self._host}:{self._port}"],
-                verify_certs=self._verify_certs,
-                http_auth=self._http_auth,
-            )
-
-            # # 初始化 VectorStore
-            # self._client = ElasticsearchStore(
-            #     es_connection=es_client,
-            #     index_name=f"{self._index_name_prefix}_{self._index_name}",
-            #     embedding=self._build_embedding_function(),
-            #     distance_strategy="COSINE",
-            # )
-            # self._client.add_texts(
-            #     ["Hello World!"], ids=[compute_mdhash_id("Hello World!", "doc")], metadatas=[{"text": "Hello World!"}]
-            # )
+            if not self._use_ssl:
+                self._client = Elasticsearch(
+                    hosts=[f"http://{self._host}:{self._port}"],
+                    verify_certs=self._verify_certs,
+                    http_auth=self._http_auth,
+                )
+                self._async_client = AsyncElasticsearch(
+                    hosts=[f"http://{self._host}:{self._port}"],
+                    verify_certs=self._verify_certs,
+                    http_auth=self._http_auth,
+                )
+            else:
+                self._client = Elasticsearch(
+                    hosts=[f"https://{self._host}:{self._port}"],
+                    verify_certs=self._verify_certs,
+                    http_auth=self._http_auth,
+                )
+                self._async_client = AsyncElasticsearch(
+                    hosts=[f"https://{self._host}:{self._port}"],
+                    verify_certs=self._verify_certs,
+                    http_auth=self._http_auth,
+                )
+            if not await self._async_client.ping():
+                raise ConnectionError("Elasticsearch connection failed.")
             logger.debug("ElasticsearchVectorStorage successfully initialized.")
         except Exception as e:
             logger.error(f"Failed to initialize Elasticsearch vector store: {e}")
@@ -85,7 +94,7 @@ class ElasticsearchVectorStorage(VectorStorage):
     def _build_embedding_function(self) -> Embeddings:
         return LangchainEmbeddings(self._embedder)
 
-    def add_documents(self, index_name: str, texts: List[Document]) -> List[Document]:
+    async def add_documents(self, index_name: str, texts: List[Document]) -> List[Document]:
         """
         将文档添加到 Elasticsearch 索引
         """
@@ -108,10 +117,10 @@ class ElasticsearchVectorStorage(VectorStorage):
         logger.debug(f"Adding {len(texts)} documents to Elasticsearch index {self._index_name_prefix}_{index_name}")
         if not self._client:
             raise ValueError("Elasticsearch client is not initialized.")
-        self._es_store_for_index(index_name).add_texts(texts=contents, metadatas=metadatas, ids=ids)
-        return texts
+        ids = await self._es_store_for_index(index_name).aadd_texts(texts=contents, metadatas=metadatas, ids=ids)
+        return await self.get_by_ids(index_name=index_name, ids=ids)
 
-    def get(self, index_name: str, uid: str) -> Document:
+    async def get(self, index_name: str, uid: str) -> Document:
         """
         根据 ID 获取单个文档
         """
@@ -119,20 +128,20 @@ class ElasticsearchVectorStorage(VectorStorage):
             raise ValueError("Elasticsearch client is not initialized.")
         if self._client is None:
             raise ValueError("Elasticsearch client is not initialized.")
-        result = self.get_by_ids(index_name, ids=[uid])
+        result = await self.get_by_ids(index_name, ids=[uid])
         if not result:
             return None
 
         return result[0]
 
-    def get_by_ids(self, index_name: str, ids: List[str]) -> List[Document]:
+    async def get_by_ids(self, index_name: str, ids: List[str]) -> List[Document]:
         """
         根据多个 ID 获取文档
         """
-        if not self._client:
+        if not self._async_client:
             raise ValueError("Elasticsearch client is not initialized.")
         body = {"docs": [{"_index": f"{self._index_name_prefix}_{index_name}", "_id": doc_id} for doc_id in ids]}
-        response = self._client.mget(body=body)
+        response = await self._async_client.mget(body=body)
         docs: List[Document] = []  # noqa: F811
         for res in response["docs"]:
             if not res.get("found"):
@@ -148,7 +157,7 @@ class ElasticsearchVectorStorage(VectorStorage):
             docs.append(doc)
         return docs
 
-    def delete(self, index_name: str, ids: List[str]) -> bool:
+    async def delete(self, index_name: str, ids: List[str]) -> bool:
         """
         删除指定 ID 的文档
         """
@@ -156,7 +165,7 @@ class ElasticsearchVectorStorage(VectorStorage):
             raise ValueError("Elasticsearch client is not initialized.")
 
         try:
-            self._es_store_for_index(index_name).delete(ids=ids)
+            await self._es_store_for_index(index_name).adelete(ids=ids)
             return True
         except Exception as e:
             logger.error(f"Delete failed: {e}")
@@ -168,11 +177,11 @@ class ElasticsearchVectorStorage(VectorStorage):
             bool_query["bool"]["must"].append({"term": {f"metadata.{key}": value}})
         return bool_query
 
-    def select_on_metadata(self, index_name: str, metadata_filter: Dict[str, Any]) -> List[Document]:
+    async def select_on_metadata(self, index_name: str, metadata_filter: Dict[str, Any]) -> List[Document]:
         """
         根据元数据过滤文档
         """
-        if not self._client:
+        if not self._async_client:
             raise ValueError("Elasticsearch client is not initialized.")
 
         # 构造 Elasticsearch 查询语句
@@ -183,7 +192,7 @@ class ElasticsearchVectorStorage(VectorStorage):
             "query": bool_query,
             "_source": True,  # 显式指定返回所有字段
         }
-        result = self._client.search(index=f"{self._index_name_prefix}_{index_name}", body=query)
+        result = await self._async_client.search(index=f"{self._index_name_prefix}_{index_name}", body=query)
         if not result or len(result["hits"]["hits"]) == 0:
             return []
 
@@ -202,25 +211,68 @@ class ElasticsearchVectorStorage(VectorStorage):
         return documents
         # return self._build_doc_from_result(result)
 
-    def similarity_search_by_vector(
+    async def similarity_search_by_vector(
         self, index_name: str, embedding: List[float], k: int, filter: Optional[Dict[str, str]] = None
     ) -> List[Tuple[Document, float]]:
         """
-        向量相似性搜索
+        Similarity search by vector
+        Args:
+            index_name : str
+                The name of the index to search in.
+            embedding : List[float]
+                The embedding vector to search for.
+            k : int
+                The number of top results to return.
+            filter : Optional[Dict[str, str]]
+                Optional filter to apply to the search results.
+        Returns:
+            List[Tuple[Document, float]]:
+                A list of tuples containing the Document object and its corresponding score.
         """
         if not self._client:
             raise ValueError("Elasticsearch client is not initialized.")
         bool_query: Dict[str, Any] | None = None
 
         def _doc_builder(doc: Dict[str, Any]) -> Document:
-            logger.debug(f"similarity_search_by_vector doc: {doc}")
             return Document(content=doc["_source"]["text"], metadata=doc["_source"]["metadata"], uid=doc["_id"])
 
         if filter:
-            # 构建 Elasticsearch 查询语句
             bool_query = self._build_metadata_query(filter)
-        results = self._es_store_for_index(index_name).similarity_search_by_vector_with_relevance_scores(
+        results = await self._es_store_for_index(index_name).asimilarity_search_by_vector_with_relevance_scores(  # type: ignore[attr-defined]
             embedding=embedding, k=k, filter=[bool_query], doc_builder=_doc_builder
+        )
+        logger.debug(f"es Similarity search results: {results}")
+        return [(doc, score) for doc, score in results]
+
+    async def similar_search_with_scores(
+        self, index_name: str, query: str, k: int, filter: Optional[Dict[str, str]] = None
+    ) -> List[Tuple[Document, float]]:
+        """
+        Similarity search with scores
+        Args:
+            index_name : str
+                The name of the index to search in.
+            query : str
+                The query string to search for.
+            k : int
+                The number of top results to return.
+            filter : Optional[Dict[str, str]]
+                Optional filter to apply to the search results.
+        Returns:
+            List[Tuple[Document, float]]:
+                A list of tuples containing the Document object and its corresponding score.
+        """
+        if not self._client:
+            raise ValueError("Elasticsearch client is not initialized.")
+        bool_query: Dict[str, Any] | None = None
+
+        def _doc_builder(doc: Dict[str, Any]) -> Document:
+            return Document(content=doc["_source"]["text"], metadata=doc["_source"]["metadata"], uid=doc["_id"])
+
+        if filter:
+            bool_query = self._build_metadata_query(filter)
+        results = await self._es_store_for_index(index_name).asimilarity_search_with_score(  # type: ignore[attr-defined]
+            query=query, k=k, filter=[bool_query], doc_builder=_doc_builder
         )
         logger.debug(f"es Similarity search results: {results}")
         return [(doc, score) for doc, score in results]

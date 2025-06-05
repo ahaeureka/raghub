@@ -206,3 +206,5 @@ results
 .mypy_cache
 output/
 !examples/hipoorag/graph.png
+cache/
+.cache/

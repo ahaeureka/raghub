@@ -1,7 +1,6 @@
 from typing import Any, Callable, Dict, Optional, TypeVar
 
 import tenacity
-import trio_asyncio
 from langchain.prompts import (
     ChatPromptTemplate,
 )
@@ -90,7 +89,7 @@ class OpenAIProxyChat(BaseChat):
         chain = self._build_chain(prompt, output_parser)
         # 执行链并返回结果
         input = self.preprocess_input(input)
-        return await trio_asyncio.aio_as_trio(chain.ainvoke)(input)
+        return await chain.ainvoke(input)
 
     def preprocess_input(self, input: Dict[str, str]) -> Dict[str, str]:
         """

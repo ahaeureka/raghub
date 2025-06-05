@@ -1,6 +1,7 @@
+import asyncio
 import json
 import traceback
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Any, Dict, Generic, Optional, TypeVar
 
 from langchain_core.messages import AIMessage
@@ -23,9 +24,10 @@ class BaseOperator(ABC, Generic[TOperatorOutputModel]):
         self._prompt = prompt
         self._chat = chat
 
-    def execute(self, input: Dict[str, Any], lang: str = "zh") -> TOperatorOutputModel:
+    async def execute(self, input: Dict[str, Any], lang: str = "zh") -> TOperatorOutputModel:
         _prompt = self._prompt.get(lang)
-        rsp = self._chat.chat(_prompt, input, self.output_parser)
+        input = await self.pre_process(input)  # Pre-process the input
+        rsp = await self._chat.achat(_prompt, input, self.output_parser)
         d = rsp.model_dump()
         d["name"] = self.name
         try:
@@ -51,7 +53,11 @@ class BaseOperator(ABC, Generic[TOperatorOutputModel]):
             logger.error(traceback.format_exc())
             return ChatResponse(tokens=output.usage_metadata["total_tokens"], content={})
 
-    @abstractmethod
     def post_process(self, output: Dict[str, Any]) -> Dict[str, Any]:
         # Implement any post-processing logic here
-        raise NotImplementedError("This method should be overridden by subclasses")
+        return output["content"] if "content" in output else output
+
+    async def pre_process(self, input: Dict[str, Any]) -> Dict[str, Any]:
+        # Implement any pre-processing logic here
+        await asyncio.sleep(0.01)
+        return input

@@ -61,6 +61,7 @@ class HippoRAG(BaseApp):
         hipporag_config["embedding_prefix"] = config.rag.embbeding.embedding_key_prefix
         hipporag_config["graph_path"] = config.graph.graph_path
         hipporag_config.pop("storage_provider", None)
+        logger.debug(f"Creating HippoRAG with embedder: {self._embedder}")
         self.hipporag = HippoRAGImpl(
             self._llm,
             self._embedder,
@@ -70,7 +71,7 @@ class HippoRAG(BaseApp):
             **hipporag_config,
         )
 
-    def create(self, unique_name: str):
+    async def create(self, unique_name: str):
         """
         Creates a new index in the vector store and graph store.
 
@@ -78,9 +79,9 @@ class HippoRAG(BaseApp):
             unique_name : str
                 The unique name for the index to be created.
         """
-        self.hipporag.create(unique_name)
+        await self.hipporag.create(unique_name)
 
-    def add_documents(self, unique_name: str, texts: List[Document], lang="en") -> List[Document]:
+    async def add_documents(self, unique_name: str, texts: List[Document], lang="en") -> List[Document]:
         """
         Adds documents to the vector store and graph store.
 
@@ -92,9 +93,11 @@ class HippoRAG(BaseApp):
             lang : str
                 The language of the documents. Defaults to "en".
         """
-        return self.hipporag.add_documents(unique_name, texts, lang=lang)
+        return await self.hipporag.add_documents(unique_name, texts, lang=lang)
 
-    def retrieve(self, unique_name: str, queries: List[str], retrieve_top_k=10, lang="en") -> List[RetrieveResultItem]:
+    async def retrieve(
+        self, unique_name: str, queries: List[str], retrieve_top_k=10, lang="en"
+    ) -> List[RetrieveResultItem]:
         """
         Retrieves documents based on the provided queries using a combination of dense
         passage retrieval and graph search.
@@ -113,14 +116,14 @@ class HippoRAG(BaseApp):
             List[RetrieveResultItem]
                 A list of RetrieveResultItem objects containing the retrieved documents and their corresponding scores.
         """
-        return self.hipporag.retrieve(
+        return await self.hipporag.retrieve(
             unique_name,
             queries=queries,
             retrieve_top_k=retrieve_top_k,
             lang=lang,
         )
 
-    def delete(self, index_name: str, docs_to_delete: List[str]):
+    async def delete(self, index_name: str, docs_to_delete: List[str]):
         """
         Deletes documents and their associated triples from the database, embedding store, and graph store.
         Args:
@@ -131,12 +134,12 @@ class HippoRAG(BaseApp):
         Returns:
             None
         """
-        self.hipporag.delete(index_name, docs_to_delete)
+        await self.hipporag.delete(index_name, docs_to_delete)
 
-    def init(self):
+    async def init(self):
         """
         Initializes the HippoRAG instance by loading the database and embedding store.
         Returns:
             None
         """
-        self.hipporag.init()
+        await self.hipporag.init()

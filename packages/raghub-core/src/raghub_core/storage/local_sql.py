@@ -5,7 +5,9 @@ from typing import Any, List, Optional, Type
 from loguru import logger
 from raghub_core.storage.structed_data import StructedDataStorage
 from sqlalchemy import Engine, Executable
-from sqlmodel import Session, SQLModel, create_engine, select, update
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlmodel import SQLModel, select, update
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 class LocalSQLStorage(StructedDataStorage):
@@ -13,15 +15,19 @@ class LocalSQLStorage(StructedDataStorage):
 
     def __init__(self, db_url: str):
         self.db_url = db_url
-        self._engine: Optional[Engine] = None
+        self._engine: Optional[AsyncEngine] = None
 
-    def init(self):
+    async def init(self):
+        if self.db_url.startswith("sqlite://"):
+            print(f"Using SQLite database:{self.db_url}")
+            self.db_url = self.db_url.replace("sqlite://", "sqlite+aiosqlite://")
         path = self.db_url.split("://")[-1]
         logger.debug(f"Initializing SQLite database at {self.db_url}")
         path_dir = os.path.dirname(path)
         os.makedirs(path_dir, exist_ok=True)
-        self._engine = create_engine(self.db_url)
-        SQLModel.metadata.create_all(self._engine)
+        self._engine = create_async_engine(self.db_url)
+        async with self._engine.begin() as conn:
+            await conn.run_sync(SQLModel.metadata.create_all)
 
     def get_engine(self) -> Engine:
         if self._engine is None:
@@ -33,15 +39,15 @@ class LocalSQLStorage(StructedDataStorage):
             self._engine.dispose()
             self._engine = None
 
-    def add(self, data: SQLModel):
-        with Session(self._engine) as session:
+    async def add(self, data: SQLModel):
+        async with AsyncSession(self._engine) as session:
             if hasattr(data, "created_at"):
                 data.created_at = datetime.datetime.now(datetime.timezone.utc)
-            session.merge(data)
-            session.commit()
+            await session.merge(data)
+            await session.commit()
 
-    def get(self, keys: List[str], model_cls: type[SQLModel]) -> List[SQLModel]:
-        with Session(self._engine) as session:
+    async def get(self, keys: List[str], model_cls: type[SQLModel]) -> List[SQLModel]:
+        async with AsyncSession(self._engine) as session:
             primary_key_names = self.get_primary_key_names(model_cls)
             if not primary_key_names:
                 raise ValueError(f"Model {model_cls.__name__} does not have a primary key.")
@@ -55,12 +61,13 @@ class LocalSQLStorage(StructedDataStorage):
             if hasattr(model_cls, "is_deleted"):
                 sql = sql.where(model_cls.is_deleted == False)  # noqa: E712
             logger.debug(f"SQL: {sql.compile(compile_kwargs={'literal_binds': True})}")
-            ret = session.exec(sql).fetchall()
-            return ret
+            ret = await session.exec(sql)
+
+            return ret.fetchall()
 
             # return session.exec(model_cls).filter(getattr(model_cls, model_cls.__primary_key__).__eq__(keys)).all()
 
-    def delete(self, keys: list[str], model_cls: Type[SQLModel]):
+    async def delete(self, keys: list[str], model_cls: Type[SQLModel]):
         primary_key_names = self.get_primary_key_names(model_cls)
         if not primary_key_names:
             raise ValueError(f"Model {model_cls.__name__} does not have a primary key.")
@@ -69,29 +76,29 @@ class LocalSQLStorage(StructedDataStorage):
         if not keys:
             raise ValueError("Keys list is empty.")
 
-        self.update(
+        await self.update(
             model_cls,
             {"deleted_at": datetime.datetime.now(datetime.timezone.utc), "is_deleted": True},
             getattr(model_cls, primary_key_names[0]).in_(keys),
         )
 
-    def update(self, model_cls: Type[SQLModel], updated: dict, *where):
-        with Session(self._engine) as session:
+    async def update(self, model_cls: Type[SQLModel], updated: dict, *where):
+        async with AsyncSession(self._engine) as session:
             statement = update(model_cls).values(**updated).where(*where)
-            session.exec(statement)
-            session.commit()
+            await session.exec(statement)
+            await session.commit()
 
         return True
 
-    def batch_add(self, data: list[SQLModel]):
-        with Session(self._engine) as session:
+    async def batch_add(self, data: list[SQLModel]):
+        async with AsyncSession(self._engine) as session:
             for item in data:
                 if hasattr(item, "created_at"):
                     item.created_at = datetime.datetime.now(datetime.timezone.utc)
-                session.merge(item)
-            session.commit()
+                await session.merge(item)
+            await session.commit()
 
-    def exec(self, statement: Executable) -> Any:
-        with Session(self._engine) as session:
-            result = session.exec(statement)
+    async def exec(self, statement: Executable) -> Any:
+        async with AsyncSession(self._engine) as session:
+            result = await session.exec(statement)
             return result

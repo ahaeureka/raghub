@@ -8,21 +8,21 @@ class CacheStorage(metaclass=SingletonRegisterMeta):
     name = ""
 
     @abstractmethod
-    def init(self):
+    async def init(self):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def set(self, key: str, value: Any, ttl=None):
+    async def aset(self, key: str, value: Any, ttl=None):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get(self, key: str) -> str:
+    async def aget(self, key: str) -> str:
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete(self, key: str):
+    async def adelete(self, key: str):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def clear(self):
+    async def aclear(self):
         raise NotImplementedError("Subclasses should implement this method.")

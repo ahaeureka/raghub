@@ -21,11 +21,11 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def init(self):
+    async def init(self):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def save_openie_info(self, label: str, openie_info: List[OpenIEInfo]):
+    async def save_openie_info(self, label: str, openie_info: List[OpenIEInfo]):
         """
         Save OpenIE information to the storage.
         Args:
@@ -34,7 +34,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get_openie_info(self, label: str, keys: List[str]) -> List[OpenIEInfo]:
+    async def get_openie_info(self, label: str, keys: List[str]) -> List[OpenIEInfo]:
         """
         Retrieve OpenIE information from the storage.
         Args:
@@ -45,7 +45,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete_openie_info(self, label: str, keys: List[str]):
+    async def delete_openie_info(self, label: str, keys: List[str]):
         """
         Delete OpenIE information from the storage.
         Args:
@@ -54,7 +54,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def set_ent_node_to_chunk_ids(self, label: str, ent_node_id: str, ent_node_to_chunk_ids: List[str]):
+    async def set_ent_node_to_chunk_ids(self, label: str, ent_node_id: str, ent_node_to_chunk_ids: List[str]):
         """
         Set the mapping of entity node ID to chunk IDs in the cache.
         Args:
@@ -64,7 +64,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get_ent_node_to_chunk_ids(self, label: str, ent_node_id: str) -> Optional[List[str]] | None:
+    async def get_ent_node_to_chunk_ids(self, label: str, ent_node_id: str) -> Optional[List[str]] | None:
         """
         Retrieve the mapping of entity node ID to chunk IDs from the cache.
         Args:
@@ -75,7 +75,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def set_node_to_node_stats(self, label: str, from_node_key: str, to_node_key: str, stats: float):
+    async def set_node_to_node_stats(self, label: str, from_node_key: str, to_node_key: str, stats: float):
         """
         Set the node-to-node statistics in the cache.
         Args:
@@ -86,7 +86,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get_node_to_node_stats(self, label: str, from_node_key: str, to_node_key: str) -> Optional[float]:
+    async def get_node_to_node_stats(self, label: str, from_node_key: str, to_node_key: str) -> Optional[float]:
         """
         Retrieve the node-to-node statistics from the cache.
         Args:
@@ -98,7 +98,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def set_triples_to_docs(self, label: str, triples: Dict[str, Set[str]]):
+    async def set_triples_to_docs(self, label: str, triples: Dict[str, Set[str]]):
         """
         Set the mapping of triples to documents in the cache.
         Args:
@@ -107,7 +107,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get_docs_from_triples(self, label: str, triples: Tuple[str, str, str]) -> List[str]:
+    async def get_docs_from_triples(self, label: str, triples: Tuple[str, str, str]) -> List[str]:
         """
         Retrieve the documents associated with a given triple from the cache.
         Args:
@@ -118,7 +118,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete_ent_node_to_chunk_ids(self, label: str, ent_node_ids: List[str]):
+    async def delete_ent_node_to_chunk_ids(self, label: str, ent_node_ids: List[str]):
         """
         Delete the mapping of entity node IDs to chunk IDs from the cache.
         Args:
@@ -127,7 +127,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete_node_to_node_stats(self, label: str, from_node_key: str, to_node_key: str):
+    async def delete_node_to_node_stats(self, label: str, from_node_key: str, to_node_key: str):
         """
         Delete the node-to-node statistics from the cache.
         Args:
@@ -137,7 +137,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete_nodes_cache(self, label: str, node_keys: List[str]):
+    async def delete_nodes_cache(self, label: str, node_keys: List[str]):
         """
         Delete the node cache for a given node key.
         Args:
@@ -146,7 +146,7 @@ class HipporagStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete_triples_to_docs(self, label: str, triples: List[Tuple[str, str, str]]):
+    async def delete_triples_to_docs(self, label: str, triples: List[Tuple[str, str, str]]):
         """
         Delete the mapping of triples to documents from the cache.
         Args:

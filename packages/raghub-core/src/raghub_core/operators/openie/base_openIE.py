@@ -8,7 +8,7 @@ class BaseOpenIE(metaclass=SingletonRegisterMeta):
     name = ""
 
     @abstractmethod
-    def extract(self, text: str, lang: str = "zh") -> OpenIEModel:
+    async def extract(self, text: str, lang: str = "zh") -> OpenIEModel:
         """
         Extracts triples from the given text and returns an OpenIEModel object.
 

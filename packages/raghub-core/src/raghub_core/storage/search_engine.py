@@ -14,11 +14,11 @@ class SearchEngineStorage(metaclass=SingletonRegisterMeta):
     """
 
     @abstractmethod
-    def init(self):
+    async def init(self):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def create_index(self, index_name: str, index_mapping: Optional[dict] = None):
+    async def create_index(self, index_name: str, index_mapping: Optional[dict] = None):
         """
         Create an index in the search engine.
         Args:
@@ -28,7 +28,7 @@ class SearchEngineStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def insert_document(self, index_name: str, documents: list[SQLModel]):
+    async def insert_document(self, index_name: str, documents: list[SQLModel]):
         """
         Insert documents into the search engine index.
         Args:
@@ -38,7 +38,7 @@ class SearchEngineStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def get_documents(
+    async def get_documents(
         self, index_name: str, query: dict, model_cls: Type[TSQLModel], filter_deleted: bool = True
     ) -> list[TSQLModel]:
         """
@@ -54,7 +54,7 @@ class SearchEngineStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    def delete_documents(self, index_name: str, keys: List[str], soft_deleted: bool = True):
+    async def delete_documents(self, index_name: str, keys: List[str], soft_deleted: bool = True):
         """
         Delete documents from the search engine index.
         Args:
