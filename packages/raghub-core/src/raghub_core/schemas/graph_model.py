@@ -71,7 +71,7 @@ class GraphEdge(SQLModel):
     target_content: str = Field(..., description="The content of the target vertex.")
     weight: float = Field(..., description="The weight of the edge.")
     relation_type: RelationType = Field(..., description="The relation type of the edge.")
-    relation: Optional[List[str]] = Field(default=None, description="The relation of the edge, if applicable.")
+    relation: Optional[str] = Field(default=None, description="The relation of the edge, if applicable.")
     description: Optional[List[str]] = Field(default="", description="A summary of the edge.")
     edge_metadata: Dict[str, Any] = Field(
         default={}, alias="metadata", description="The metadata associated with the edge."

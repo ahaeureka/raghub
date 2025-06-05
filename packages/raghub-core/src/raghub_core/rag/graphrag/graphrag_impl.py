@@ -3,7 +3,6 @@ from typing import Dict, List, Optional
 
 from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
-from raghub_core.embedding.base_embedding import BaseEmbedding
 from raghub_core.operators.graph.query_indent_det import QueryIndentDetectionOperator
 from raghub_core.rag.base_rag import BaseGraphRAGStorage, BaseRAG
 from raghub_core.rag.graphrag.operators import GraphRAGOperators
@@ -30,9 +29,7 @@ class GraphRAGImpl(BaseRAG):
     GraphRAG implementation.
     """
 
-    def __init__(
-        self, llm: BaseChat, embbeder: BaseEmbedding, storage: BaseGraphRAGStorage, operators: GraphRAGOperators
-    ):
+    def __init__(self, llm: BaseChat, storage: BaseGraphRAGStorage, operators: GraphRAGOperators):
         self.llm = llm
         self.storage = storage
         self._topk = 5
@@ -269,9 +266,6 @@ class GraphRAGImpl(BaseRAG):
             tasks.append(self._operators.summarize_communities({"graph": graph}, lang))
         results: List[SummarizeOperatorOutputModel] = await asyncio.gather(*tasks, return_exceptions=False)
         for i, community in enumerate(communities):
-            # if isinstance(results[i], Exception):
-            #     logger.error(f"Error in summarizing community {community}: {results[i]}")
-            #     raise RuntimeError(f"Error in summarizing community {community}: {results[i]}") from results[i]
             # community.cid = compute_mdhash_id(results[i].summary, prefix="community")
             communities[i].summary = results[i].summary
             # logger.info(f"Summarize community {community}: {community.summary[:50]}...")
@@ -370,13 +364,19 @@ class GraphRAGImpl(BaseRAG):
                 # subgraph = GraphHelper.format_graph(graph)
         if not docs:
             # entities_id = [GraphHelper.generate_vertex_id(entity) for entity in entities if entity]
-            docs = await self.storage.get_docs_by_entities(unique_name, entities)
+            if not graph or not graph.vertices:
+                docs = await self.storage.get_docs_by_entities(unique_name, entities)
+            else:
+                docs = await self.storage.get_docs_by_entities(unique_name, [v.content for v in graph.vertices])
+
+            logger.debug(f"Retrieved {len(docs)} documents by entities: {entities}")
 
         subgraph = GraphHelper.format_graph(graph) if graph and graph.vertices else ""
         return GraphRAGRetrieveResultItem(
             query=query, context=context, graph=graph, subgraph=subgraph, docs=docs_duplicate_filter(docs)
         )
 
+    # async def _match_entities_to_docs
     async def _search_subgraph(
         self, unique_name, keywords: KeywordsOperatorOutputModel, query_indent: QueryIndentationModel, top_k=5
     ) -> GraphModel | None:
@@ -406,16 +406,42 @@ class GraphRAGImpl(BaseRAG):
                 self.storage.similar_search_with_scores(self._entities_index.format(index_name), keyword, top_k)
             )
         results = await asyncio.gather(*query_tasks, return_exceptions=False)
+        doc_id_to_score: Dict[str, float] = {}
         for _, result in enumerate(results):
-            if isinstance(result, Exception):
-                raise RuntimeError(f"Error during similar search: {str(result)}") from result
             if score_threshold:
                 result = [doc for doc in result if doc[1] >= score_threshold]
             if result:
                 logger.debug(f"Found {result} similar entities for keyword: {keywords}")
                 similar_entities.extend([doc[0] for doc in result])
+                doc_id_to_score.update({doc[0].uid: doc[1] for doc in result})
         if not similar_entities:
             return []
+        # group: Dict[str, List[GraphVertex]] = await self.storage.aselect_vertices_group_by_graph(
+        #     index_name, {"uid_in": [doc.uid for doc in similar_entities]}
+        # )
+
+        # def mean_score(group: Dict[str, List[GraphVertex]]):
+        #     """Calculate mean score for each group of vertices."""
+        #     scores = {}
+        #     for key, vertices in group.items():
+        #         total_score = sum(doc_id_to_score.get(v.uid, 0) for v in vertices)
+        #         scores[key] = total_score / len(vertices) if vertices else 0
+        #     return scores
+
+        # group_scores = mean_score(group)
+        # if group_scores:
+        #     best_group_key = max(group_scores, key=group_scores.get)
+        #     best_vertices = group[best_group_key]
+        #     similar_entities = [
+        #         Document(
+        #             content=v.content,
+        #             summary="\n".join(v.description),
+        #             uid=v.uid,
+        #             metadata=v.metadata,
+        #             embedding=v.embedding,
+        #         )
+        #         for v in best_vertices
+        #     ]
         return similar_entities
 
     async def qa(self, unique_name: str, query: str, top_k: int = 5) -> GraphRAGRetrieveResultItem:

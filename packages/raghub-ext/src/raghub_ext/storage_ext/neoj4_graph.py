@@ -134,7 +134,7 @@ class Neo4jGraphStorage(GraphStorage):
     async def aadd_graph_vertices(self, label: str, nodes: List[GraphVertex]):
         pass
 
-    async def aselect_vertices(self, label, attrs: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def aselect_vertices(self, label, attrs: Dict[str, Any]) -> List[GraphVertex]:
         """
         Select vertices based on attributes.
 
@@ -155,7 +155,7 @@ class Neo4jGraphStorage(GraphStorage):
                     result = await session.run(query)
                 else:
                     result = await session.run(query, **attrs)
-                return [record["properties(n)"] for record in result]
+                return [GraphVertex(**record["properties(n)"]) for record in result]
         except Exception as e:
             logger.error(f"Error selecting vertices: {e}")
             raise

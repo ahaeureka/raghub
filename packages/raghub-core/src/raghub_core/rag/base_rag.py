@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_model import GraphCommunity, GraphEdge, GraphModel, GraphVertex, QueryIndentationModel
@@ -83,6 +83,20 @@ class BaseGraphRAGStorage(metaclass=SingletonRegisterMeta):
             documents (List[Document]): List of documents to add.
         Returns:
             List[Document]: List of added documents.
+        """
+        raise NotImplementedError("This method should be overridden by subclasses.")
+
+    @abstractmethod
+    async def aselect_vertices_group_by_graph(
+        self, index_name: str, filter: Dict[str, Any]
+    ) -> Dict[str, List[GraphVertex]]:
+        """
+        Select vertices grouped by graph from the graph storage system.
+        Args:
+            index_name (str): Name of the index to use for selection.
+            filter (Dict[str, Any]): Filter criteria for selecting vertices.
+        Returns:
+            Dict[str, List[GraphVertex]]: Dictionary with graph names as keys and lists of vertices as values.
         """
         raise NotImplementedError("This method should be overridden by subclasses.")
 

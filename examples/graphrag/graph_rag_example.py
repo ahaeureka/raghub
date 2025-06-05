@@ -30,7 +30,7 @@ async def graphRAG():
     await graph.init()
     await sql.init()
     storage = GraphRAGStorage(vector, graph, sql)
-    return GraphRAGImpl(llm, embbedder, storage, DefaultGraphRAGOperators(llm, vector))
+    return GraphRAGImpl(llm, storage, DefaultGraphRAGOperators(llm, vector))
 
 
 async def test_add_documents(graphRAG: GraphRAGImpl):
@@ -71,7 +71,7 @@ async def test_add_documents(graphRAG: GraphRAGImpl):
 async def main():
     graph = await graphRAG()
     graph.init()
-    await test_add_documents(graph)
+    # await test_add_documents(graph)
     result = await graph.retrieve(
         "test_graph_rag",
         [

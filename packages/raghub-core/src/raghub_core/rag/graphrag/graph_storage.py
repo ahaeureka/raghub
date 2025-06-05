@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 from raghub_core.rag.base_rag import BaseGraphRAGStorage
@@ -399,6 +399,19 @@ class GraphRAGStorage(BaseGraphRAGStorage):
     async def save_openie_info(self, unique_name, openie_info):
         pass
         # return await super().save_openie_info(unique_name, openie_info)
+
+    async def aselect_vertices_group_by_graph(
+        self, index_name: str, filter: Dict[str, Any]
+    ) -> Dict[str, List[GraphVertex]]:
+        """
+        Select vertices from the graph storage system based on a filter.
+        Args:
+            index_name (str): Name of the index to search in.
+            filter (Dict[str, str]): Filter criteria for selecting vertices.
+        Returns:
+            List[GraphVertex]: List of vertices matching the filter criteria.
+        """
+        return await self.graph_store.aselect_vertices_group_by_graph(index_name, filter)
 
     async def get_docs_by_entities(self, index_name: str, entities: List[str]) -> List[Document]:
         """

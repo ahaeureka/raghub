@@ -584,15 +584,6 @@ class IGraphStore(GraphStorage):
         edges: List[GraphEdge] = []
         existing_vs = set()
         existing_es = set()
-        # results = {
-        #     "paths": [],
-        #     "end_nodes": set(),
-        #     # 'statistics': {
-        #     #     'total_paths': 0,
-        #     #     'unique_end_nodes': 0,
-        #     #     'path_lengths': defaultdict(int)
-        #     # }
-        # }
 
         # BFS队列：(当前节点, 路径, 已访问节点集合, 当前跳数, 路径中的关系)
         queue: deque = deque()
@@ -613,15 +604,6 @@ class IGraphStore(GraphStorage):
 
             if hop_count >= max_hops:
                 if len(path) > 1:  # 确保路径长度大于1
-                    # results["paths"].append(
-                    #     {
-                    #         "path": path.copy(),
-                    #         "relations": path_relations.copy(),
-                    #         "length": len(path) - 1,
-                    #         "end_node": path[-1],
-                    #     }
-                    # )
-                    # results["end_nodes"].add(path[-1])
                     path_count += 1
                 continue
 
@@ -678,15 +660,6 @@ class IGraphStore(GraphStorage):
                     )
                 # 如果已经达到指定的关系路径长度，记录结果
                 if relation_path and len(new_path_relations) == len(relation_path):
-                    # results["paths"].append(
-                    #     {
-                    #         "path": new_path.copy(),
-                    #         "relations": new_path_relations.copy(),
-                    #         "length": len(new_path) - 1,
-                    #         "end_node": neighbor,
-                    #     }
-                    # )
-                    # results["end_nodes"].add(neighbor)
                     path_count += 1
                     if path_count >= max_paths:
                         break
@@ -877,3 +850,32 @@ class IGraphStore(GraphStorage):
             return existing_edges
         # Add edges to the graph storage
         return await self.aadd_graph_edges(unique_name, new_edges)
+
+    async def aselect_vertices_group_by_graph(self, label: str, attrs: Dict[str, Any]) -> Dict[str, List[GraphVertex]]:
+        """
+        Select vertices from the graph and group them by their graph.
+        Args:
+            label (str): The label of the vertices to select.
+            attrs (Dict[str, Any]): Attributes to filter the vertices.
+
+        Returns:
+            List[Dict[str, List[GraphVertex]]]: List of dictionaries with graph names as keys
+            and lists of GraphVertex as values.
+        """
+        if not self._graph:
+            self.load_graph()
+        if "label" not in self._graph.vs.attributes():
+            logger.warning("No label attribute found in the graph vertices.")
+            return {}
+        ret: ig.VertexSeq = await run_in_executor(None, self._graph.vs.select, label_eq=label, **attrs)
+        if not ret:
+            return {}
+        components = self._graph.connected_components()
+        membership = components.membership
+        grouped_vertices: Dict[str, List[GraphVertex]] = {}
+        for vertex in ret:
+            graph_name = f"graph_{membership[vertex.index]}"
+            if graph_name not in grouped_vertices:
+                grouped_vertices[graph_name] = []
+            grouped_vertices[graph_name].append(GraphVertex(**vertex.attributes()))
+        return grouped_vertices

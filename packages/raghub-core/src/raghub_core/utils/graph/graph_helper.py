@@ -22,7 +22,8 @@ class GraphHelper:
         if concise:
             fmt = f"{edge.source} -[{edge.relation_type}]-> {edge.target}"
         else:
-            fmt = f"({edge.source_content}) -[{edge.relation_type}: {line_break.join(edge.description)}]-> ({edge.target_content})"  # noqa: E501
+            desc = edge.description or []
+            fmt = f"({edge.source_content}) -[{edge.relation_type}: {line_break.join(desc)}]-> ({edge.target_content})"  # noqa: E501
         return fmt
 
     @staticmethod
@@ -41,11 +42,11 @@ class GraphHelper:
         relationships = []
         line_break = "\n"
         for ent in community.graph.vertices:
-            entities.append(f"({ent.content}:{line_break.join(ent.description)})")
+            desc = ent.description or []
+            entities.append(f"({ent.content}:{line_break.join(desc)})")
         for ref in community.graph.edges:
-            relationships.append(
-                f"({ref.source})-[{ref.relation_type}:{line_break.join(ref.description)}]->({ref.target})"
-            )
+            desc = ref.description or []
+            relationships.append(f"({ref.source})-[{ref.relation_type}:{line_break.join(desc)}]->({ref.target})")
         entities_str = "\n".join(entities)
         relationships_str = "\n".join(relationships)
         return f"Entities:\n{entities_str}\n\nRelationships:\n{relationships_str}\n\n"

@@ -53,7 +53,7 @@ def detect_language(text) -> str:
     return lang
 
 
-def docs_duplicate_filter_recommended(docs: List[Document]) -> List[Document]:
+def docs_duplicate_filter(docs: List[Document]) -> List[Document]:
     """
     Remove duplicates from a list while preserving the order.
 

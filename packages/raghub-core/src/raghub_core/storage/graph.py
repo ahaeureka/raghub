@@ -128,6 +128,23 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
+    async def aselect_vertices_group_by_graph(
+        self, label: str, attrs: Dict[str, Any]
+    ) -> List[Dict[str, List[GraphVertex]]]:
+        """
+        Select vertices from the graph based on attributes and group them by a specified field.
+
+        Args:
+            label: The name of the label to use for the search.
+            attrs: A dictionary of attributes to filter the vertices.
+            group_by: The field to group the vertices by.
+
+        Returns:
+            A list of GraphVertex objects representing the selected vertices.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
     async def aselect_edges(self, label: str, attrs: Dict[str, Any]) -> List[GraphEdge]:
         """
         Select edges from the graph based on source and target vertices.
