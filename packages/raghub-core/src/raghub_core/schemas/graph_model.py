@@ -38,7 +38,7 @@ class GraphVertex(BaseModel):
     """
 
     name: str = Field(..., description="The name of the vertex.")
-    description: Optional[List[str]] = Field(default=[], description="A summary of the vertex.")
+    description: Optional[Dict[str, str]] = Field(default=[], description="A summary of the vertex.")
     metadata: Dict[str, Any] = Field(default={}, description="The metadata associated with the vertex.")
     uid: str = Field(..., description="The unique identifier for the vertex.")
     content: str = Field(..., description="The content of the vertex.")
@@ -72,7 +72,7 @@ class GraphEdge(SQLModel):
     weight: float = Field(..., description="The weight of the edge.")
     relation_type: RelationType = Field(..., description="The relation type of the edge.")
     relation: Optional[str] = Field(default=None, description="The relation of the edge, if applicable.")
-    description: Optional[List[str]] = Field(default="", description="A summary of the edge.")
+    description: Optional[Dict[str, str]] = Field(default="", description="A summary of the edge.")
     edge_metadata: Dict[str, Any] = Field(
         default={}, alias="metadata", description="The metadata associated with the edge."
     )

@@ -3,7 +3,7 @@ import os
 
 from raghub_core.chat.openai_chat import OpenAIProxyChat
 from raghub_core.embedding.openai_embedding import OpenAIEmbedding
-from raghub_core.rag.graphrag.graph_storage import GraphRAGStorage
+from raghub_core.rag.graphrag.graph_dao import GraphRAGDAO
 from raghub_core.rag.graphrag.graphrag_impl import GraphRAGImpl
 from raghub_core.rag.graphrag.operators import DefaultGraphRAGOperators
 from raghub_core.schemas.document import Document
@@ -29,7 +29,7 @@ async def graphRAG():
     await vector.init()
     await graph.init()
     await sql.init()
-    storage = GraphRAGStorage(vector, graph, sql)
+    storage = GraphRAGDAO(vector, graph, sql)
     return GraphRAGImpl(llm, embbedder, storage, DefaultGraphRAGOperators(llm, vector))
 
 

@@ -69,7 +69,7 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("This method 'retrieve' should be overridden by subclasses.")
 
 
-class BaseGraphRAGStorage(metaclass=SingletonRegisterMeta):
+class BaseGraphRAGDAO(metaclass=SingletonRegisterMeta):
     """
     Base class for Graph Storage in RAG systems.
     """

@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_model import GraphCommunity, GraphEdge, GraphModel, GraphVertex
@@ -23,7 +23,7 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
-    async def aget_by_ids(self, ids: List[str]) -> List[Document]:
+    async def aget_by_ids(self, label: str, ids: List[str]) -> List[Document]:
         raise NotImplementedError("Subclasses should implement this method.")
 
     # @abstractmethod
@@ -52,12 +52,12 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
     # def edge_seq(self, name: str = "") -> List[str] | Dict[str, List[str]]:
     #     raise NotImplementedError("Subclasses should implement this method.")
 
-    @abstractmethod
-    async def avertices_count(self, label: str) -> int:
-        raise NotImplementedError("Subclasses should implement this `vertices_count` method.")
+    # @abstractmethod
+    # async def avertices_count(self, label: str) -> int:
+    #     raise NotImplementedError("Subclasses should implement this `vertices_count` method.")
 
     @abstractmethod
-    def apersonalized_pagerank(
+    async def apersonalized_pagerank(
         self,
         label: str,
         vertices_with_weight: Dict[str, float],
@@ -125,6 +125,24 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
 
     @abstractmethod
     async def aselect_vertices(self, label, attrs: Dict[str, Any]) -> List[GraphVertex]:
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
+    async def asearch_neibors(
+        self,
+        vertex_id: str,
+        rel_type: Optional[str] = None,
+    ) -> GraphModel:
+        """
+        Search for neighbors of a given vertex in the graph.
+
+        Args:
+            vertex_id: The ID of the vertex to search for neighbors.
+            rel_type: The type of relationship to filter the neighbors.
+
+        Returns:
+            A GraphModel containing the neighbors of the specified vertex.
+        """
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod

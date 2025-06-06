@@ -11,8 +11,8 @@ class GraphHelper:
         if concise:
             return f"({vertex.name})"
         else:
-            desc = vertex.description or []
-            return f"({vertex.content}:{line_break.join(desc)})"
+            desc = vertex.description or {}
+            return f"({vertex.content}:{line_break.join(list(desc.values()))})"  # noqa: E501
 
     @staticmethod
     def format_edge(edge: GraphEdge, concise: bool = False) -> str:
@@ -22,8 +22,8 @@ class GraphHelper:
         if concise:
             fmt = f"{edge.source} -[{edge.relation_type}]-> {edge.target}"
         else:
-            desc = edge.description or []
-            fmt = f"({edge.source_content}) -[{edge.relation_type}: {line_break.join(desc)}]-> ({edge.target_content})"  # noqa: E501
+            desc = edge.description or {}
+            fmt = f"({edge.source_content}) -[{edge.relation_type}: {line_break.join(list(desc.values()))}]-> ({edge.target_content})"  # noqa: E501
         return fmt
 
     @staticmethod
@@ -42,11 +42,13 @@ class GraphHelper:
         relationships = []
         line_break = "\n"
         for ent in community.graph.vertices:
-            desc = ent.description or []
+            desc = ent.description or {}
             entities.append(f"({ent.content}:{line_break.join(desc)})")
         for ref in community.graph.edges:
-            desc = ref.description or []
-            relationships.append(f"({ref.source})-[{ref.relation_type}:{line_break.join(desc)}]->({ref.target})")
+            desc = ref.description or {}
+            relationships.append(
+                f"({ref.source})-[{ref.relation_type}:{line_break.join(list(desc.values()))}]->({ref.target})"
+            )
         entities_str = "\n".join(entities)
         relationships_str = "\n".join(relationships)
         return f"Entities:\n{entities_str}\n\nRelationships:\n{relationships_str}\n\n"

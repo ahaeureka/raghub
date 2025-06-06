@@ -1,6 +1,6 @@
-import asyncio
 import copy
 import os
+import threading
 from collections import deque
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,71 +20,88 @@ class IGraphStore(GraphStorage):
     def __init__(self, graph_path: str, **kwargs):
         super().__init__(**kwargs)
         self._graph_path = graph_path
-        self._graph: ig.Graph = None
+        self._graph: Dict[str, ig.Graph] = {}
+        self.lock = threading.Lock()  # 创建异步锁
 
     async def init(self):
-        # Initialize the IGraph storage
-        if not self._graph:
-            self.load_graph()
-        await asyncio.sleep(0.01)  # Yield control to the event loop
-        logger.debug("Graph already loaded.")
+        pass
+        # # Initialize the IGraph storage
+        # if not self._graph:
+        #     self.load_graph()
+        # await asyncio.sleep(0.01)  # Yield control to the event loop
+        # logger.debug("Graph already loaded.")
 
-    def load_graph(self):
-        logger.debug(f"Loading graph from {self._graph_path}.")
-        if self._graph_path and os.path.exists(self._graph_path):
-            self._graph = ig.Graph.Read_Pickle(self._graph_path)
+    def _create(self, unique_name: str):
+        if self._graph and unique_name in self._graph:
+            logger.debug(f"Graph with name {unique_name} already exists. Skipping creation.")
+            return
+        basename = os.path.basename(self._graph_path)
+        fname, ext = os.path.splitext(basename)
+        path = self._graph_path
+        if not ext:
+            path = os.path.join(self._graph_path, f"{fname}_{unique_name}.pickle")
+        else:
+            path = os.path.join(self._graph_path, f"{fname}_{unique_name}{ext}")
+        logger.debug(f"Loading graph from {path}.")
+        if self._graph_path and os.path.exists(path):
+            self._graph[unique_name] = ig.Graph.Read_Pickle(fname=path)
             logger.info(f"Graph loaded from {self._graph_path}.")
         else:
-            self._graph = ig.Graph()
+            self._graph[unique_name] = ig.Graph()
             logger.debug("Initialized a new empty graph.")
+
+    async def create_graph(self, unique_name: str):
+        """
+        Create a new graph with the given unique name.
+        Args:
+            unique_name: The unique name for the graph to be created.
+        """
+        if not self._graph or unique_name not in self._graph:
+            await run_in_executor(None, self._create, unique_name)
+        else:
+            logger.warning(f"Graph with name {unique_name} already exists. Skipping creation.")
 
     def _add_edges(
         self, edges: List[Tuple[str, str]], weights: List[float], attributes: Optional[Dict[str, List[Any]]] = None
     ) -> None:
-        if not self._graph:
-            self.load_graph()
+        label = attributes["label"][0] if attributes and "label" in attributes else "default"
+        if not self._graph or label not in self._graph:
+            self._create(label)
+            # label = attributes["label"][0] if attributes and "label" in attributes else "default"
+            # self.load_graph(label)
         if len(edges) != len(weights):
             raise ValueError("The number of edges and weights must be the same.")
         attributes = attributes or {}
         attributes["weight"] = weights
         # logger.debug(f"Adding {len(edges)} edges with attributes {attributes}.")
-        self._graph.add_edges(edges, attributes=attributes)
+        self._graph[label].add_edges(edges, attributes=attributes)
         logger.info(f"Added {len(edges)} edges to the graph.")
-
-    def vs(self, name: str = "") -> ig.VertexSeq:
-        """The vertex sequence of the graph"""
-        if not self._graph:
-            self.load_graph()
-        if not name:
-            return self._graph.vs
-        if name in self._graph.vs:
-            return self._graph.vs[name]
-        raise ValueError(f"Vertex {name} not found in the graph.")
 
     def delete_vertices(self, label, keys: List[str]) -> None:
         """Delete vertices from the graph by their IDs."""
-        if not self._graph:
-            self.load_graph()
+        if not self._graph or label not in self._graph:
+            self._create(label)
         if not keys:
             raise ValueError("IDs list is empty.")
-        ret: ig.VertexSeq = self._graph.vs.select(name_in=keys, label=label)
+        ret: ig.VertexSeq = self._graph[label].vs.select(name_in=keys, label=label)
         ids = ret.indices
 
         logger.info(f"Deleting vertices with IDs: {ids}")
-        self._graph.delete_vertices(ids)
+        self._graph[label].delete_vertices(ids)
         logger.info(f"Deleted {len(ids)} vertices from the graph.")
+        self._save(label)
 
     async def adelete_vertices(self, label, keys: List[str]) -> None:
         return await run_in_executor(None, self.delete_vertices, label, keys)
 
     def select_vertices(self, label: str, attrs: Dict[str, Any]) -> List[GraphVertex]:
         """Select vertices based on attributes."""
-        if not self._graph:
-            self.load_graph()
-        if not self._graph.vs.attributes():
+        if not self._graph or label not in self._graph:
+            self._create(label)
+        if not self._graph[label].vs.attributes():
             logger.warning("No attributes found in the graph vertices.")
             return []
-        ret: ig.VertexSeq = self._graph.vs.select(label=label, **attrs)
+        ret: ig.VertexSeq = self._graph[label].vs.select(label=label, **attrs)
 
         indexs = ret.indices
         vertices = {k: ret.get_attribute_values(k) for k in ret.attributes()}
@@ -99,33 +116,27 @@ class IGraphStore(GraphStorage):
     async def aselect_vertices(self, label: str, attrs: Dict[str, Any]) -> List[GraphVertex]:
         return await run_in_executor(None, self.select_vertices, label, attrs)
 
-    def edge_seq(self, name: str = "") -> List[str] | Dict[str, List[str]]:
-        """The edge sequence of the graph"""
-        if not self._graph:
-            self.load_graph()
-        if not name:
-            return self._graph.es
-        if name in self._graph.es:
-            return self._graph.es[name]
-        return []
-
     def add_vertices(self, label: str, nodes: List[GraphVertex]):
         """Add vertices to the graph with the given attributes."""
+        if not self._graph or label not in self._graph:
+            self._create(label)
         if all(isinstance(node, GraphVertex) for node in nodes):
             nodes = self.graph_vertices2nodes(nodes)
         uids = {node["uid"]: node for node in nodes if "uid" in node}
         existing_nodes = []
-        if uids and "label" in self._graph.vs.attributes():
-            existing_vertices: ig.VertexSeq = self._graph.vs.select(label_eq=label, uid_in=list(uids.keys()))
+        if uids and "label" in self._graph[label].vs.attributes():
+            existing_vertices: ig.VertexSeq = self._graph[label].vs.select(label_eq=label, uid_in=list(uids.keys()))
             vertices = {k: existing_vertices.get_attribute_values(k) for k in existing_vertices.attributes()}
             for index, existing_vertex in enumerate(existing_vertices):
                 uid = vertices["uid"][index]
                 metadata = vertices.get("metadata", [])[index] if "metadata" in vertices else {}
                 doc_id: List[str] = vertices.get("doc_id", [])[index] if "doc_id" in vertices else []
                 doc_id = doc_id if doc_id else []
-                description: List[str] = vertices.get("description ", [])[index] if "description " in vertices else []
+                description: Dict[str, str] = (
+                    vertices.get("description", {})[index] if "description " in vertices else {}
+                )
                 facts: List[str] = metadata.get("facts", []) if "facts" in metadata else []
-                description.extend(uids[uid].get("description", []))
+                description.update(uids[uid].get("description", {}))
                 doc_id.extend(uids[uid].get("doc_id", []))
                 facts.extend(uids[uid].get("facts", []))
                 metadata.update(uids[uid].get("metadata", {}))
@@ -135,7 +146,7 @@ class IGraphStore(GraphStorage):
                     {
                         "metadata": metadata,
                         "doc_id": list(set(doc_id)),
-                        "description": list(set(description)),
+                        "description": description,
                     }
                 )
                 existing_vertex.update_attributes(**vertex_dict)
@@ -154,9 +165,9 @@ class IGraphStore(GraphStorage):
                 attributes[k].append(v)
         if len(attributes) > 0:
             n = len(next(iter(attributes.values())))
-            self._graph.add_vertices(n=n, attributes=attributes)
+            self._graph[label].add_vertices(n=n, attributes=attributes)
             # logger.info(f"Added {n} vertices to the graph with attributes {attributes}.")
-        self._save()
+        self._save(label)
 
     async def aadd_vertices(self, label: str, nodes: List[GraphVertex]):
         return await run_in_executor(None, self.add_vertices, label, nodes)
@@ -195,22 +206,31 @@ class IGraphStore(GraphStorage):
         Returns:
             None
         """
-        if not self._graph:
-            self.load_graph()
+        if not self._graph or label not in self._graph:
+            self._create(label)
         if not edges:
             raise ValueError("No edges provided.")
         # nodes_to_nodes = {key:value for key, value in edges_nodes}
         await self.aadd_new_edges(label, edges)
-        self._save()
+        self._save(label)
 
-    def _save(self):
+    def _save(self, index_name: str):
         """Save the graph to the specified path."""
-        if not self._graph:
-            self.load_graph()
+        if not self._graph or index_name not in self._graph:
+            self._create(index_name)
         if not self._graph_path:
             raise ValueError("Graph path is not set.")
-        self._graph.write_pickle(self._graph_path)
-        logger.info(f"Graph saved to {self._graph_path}.")
+        with self.lock:
+            basename = os.path.basename(self._graph_path)
+            fname, ext = os.path.splitext(basename)
+            path = self._graph_path
+            if not ext:
+                path = os.path.join(self._graph_path, f"{fname}_{index_name}.pickle")
+            else:
+                path = os.path.join(self._graph_path, f"{fname}_{index_name}{ext}")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            self._graph[index_name].write_pickle(path)
+            logger.info(f"Graph saved to {path}.")
 
     def personalized_pagerank(
         self,
@@ -221,18 +241,18 @@ class IGraphStore(GraphStorage):
         **kwargs: Any,
     ) -> Dict[str, float]:
         """Compute the personalized PageRank of the graph."""
-        if not self._graph:
-            self.load_graph()
+        if not self._graph or label not in self._graph:
+            self._create(label)
         if not vertices_with_weight:
             logger.warning("No vertices with weights provided. Using all vertices.")
             raise ValueError("No vertices with weights provided.")
         keys = list(vertices_with_weight.keys())
-        ret: ig.VertexSeq = self._graph.vs.select(name_in=keys, label=label)
+        ret: ig.VertexSeq = self._graph[label].vs.select(name_in=keys, label=label)
         if not ret:
             return {}
         indexs = ret.indices
         vertices = {k: ret.get_attribute_values(k) for k in ret.attributes()}
-        vcount = len(self._graph.vs.select(label_eq=label).get_attribute_values("name"))
+        vcount = len(self._graph[label].vs.select(label_eq=label).get_attribute_values("name"))
         reset_prob = np.zeros(vcount)
         key_to_index = {key: index for key, index in zip(vertices["name"], indexs)}
         for key, weight in vertices_with_weight.items():
@@ -241,7 +261,7 @@ class IGraphStore(GraphStorage):
             else:
                 logger.warning(f"Key {key} not found in graph vertices.")
         np_reset_prob = np.where(np.isnan(reset_prob) | (reset_prob < 0.0), 0, reset_prob)
-        pr_scores = self._graph.personalized_pagerank(
+        pr_scores = self._graph[label].personalized_pagerank(
             vertices=range(vcount),
             directed=False,
             damping=damping,
@@ -249,7 +269,7 @@ class IGraphStore(GraphStorage):
             reset=np_reset_prob,  # Corrected the parameter name here
             implementation="prpack",
         )
-        labeled_pairs = [(self._graph.vs[i]["name"], pr_scores[i]) for i in range(len(pr_scores))]
+        labeled_pairs = [(self._graph[label].vs[i]["name"], pr_scores[i]) for i in range(len(pr_scores))]
         sorted_pairs = sorted(labeled_pairs, key=lambda x: x[1], reverse=True)
         return dict(sorted_pairs[:top_k])
 
@@ -265,36 +285,19 @@ class IGraphStore(GraphStorage):
             None, self.personalized_pagerank, label, vertices_with_weight, damping, top_k, **kwargs
         )
 
-    def save(self, path: str) -> None:
-        """Save the graph to a file."""
-        path_dir = os.path.dirname(path)
-        os.makedirs(path_dir, exist_ok=True)
-        self._graph.write_pickle(path)
-        logger.info(f"Graph saved to {path}.")
-
-    async def asave(self, path: str) -> None:
-        return await run_in_executor(None, self.save, path)
-
-    def vertices_count(self, label: str) -> int:
-        """Return the number of vertices in the graph."""
-        return self._graph.vs.select(label_eq=label).vcount()
-
-    async def avertices_count(self, label: str) -> int:
-        return await run_in_executor(None, self.vertices_count, label)
-
-    def get_by_ids(self, ids: List[str]) -> List[Document]:
+    def get_by_ids(self, label: str, ids: List[str]) -> List[Document]:
         """Get vertices by their IDs."""
-        if not self._graph:
-            self.load_graph()
-        vertices = self._graph.vs.select(id_in=ids)
+        if not self._graph or label not in self._graph:
+            self._create(label)
+        vertices = self._graph[label].vs.select(id_in=ids)
         documents = []
         for vertex in vertices:
             doc = Document(content=vertex["content"], metadata=vertex["metadata"], uid=vertex["id"])
             documents.append(doc)
         return documents
 
-    async def aget_by_ids(self, ids: List[str]) -> List[Document]:
-        return await run_in_executor(None, self.get_by_ids, ids)
+    async def aget_by_ids(self, label: str, ids: List[str]) -> List[Document]:
+        return await run_in_executor(None, self.get_by_ids, label, ids)
 
     def _update_attr(self, edge: GraphEdge | GraphVertex, existing_edge: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -322,8 +325,8 @@ class IGraphStore(GraphStorage):
         # 初始化邻接表（若后续需要使用）
         # self.graph_adj_list: DefaultDict[str, Dict[str, float]] = defaultdict(dict)
         # self.graph_inverse_adj_list: DefaultDict[str, Dict[str, float]] = defaultdict(dict)
-        if not self._graph:
-            self.load_graph()
+        if not self._graph or label not in self._graph:
+            self._create(label)
         edge_source_node_keys = []
         edge_target_node_keys = []
         edge_metadata = []
@@ -340,8 +343,8 @@ class IGraphStore(GraphStorage):
         source_nodes = self.select_vertices(label, attrs=dict(name_in=edge_source_node_keys))
         target_nodes = self.select_vertices(label, attrs=dict(name_in=edge_target_node_keys))
         existing_edge_uids = set()
-        if "uid" in self._graph.es.attributes():
-            existings_edges = self._graph.es.select(uid_in=[edge.uid for edge in edges])
+        if "uid" in self._graph[label].es.attributes():
+            existings_edges = self._graph[label].es.select(uid_in=[edge.uid for edge in edges])
             existing_edge_uids = set(existings_edges.get_attribute_values("uid")) if existings_edges else set()
         existing_node_ids = set([node.name for node in source_nodes + target_nodes])
         index = 0
@@ -379,9 +382,11 @@ class IGraphStore(GraphStorage):
         return await run_in_executor(None, self.add_new_edges, label, edges)
 
     async def _discover_communities(self, label, resolution_parameter=0.8, beta=0.1, n_iterations=-1, **kwargs):
+        if not self._graph or label not in self._graph:
+            self._create(label)
         clustering = await run_in_executor(
             None,
-            self._graph.community_leiden,
+            self._graph[label].community_leiden,
             resolution_parameter=resolution_parameter,
             beta=beta,
             weights="weight",
@@ -390,13 +395,13 @@ class IGraphStore(GraphStorage):
         )  # 使用 igraph 的 Leiden 算法
         membership = clustering.membership
         # community_nodes = {}
-        self._graph.vs["cid"] = [f"community_{cid}" for cid in membership]
-        for i, _ in enumerate(self._graph.vs):
+        self._graph[label].vs["cid"] = [f"community_{cid}" for cid in membership]
+        for i, _ in enumerate(self._graph[label].vs):
             community_id = f"community_{membership[i]}"
-            self._graph.vs[i].update_attributes(cid=community_id)
-            logger.debug(f"Vertex {self._graph.vs[i]['uid']} assigned to community {community_id}.")
+            self._graph[label].vs[i].update_attributes(cid=community_id)
+            logger.debug(f"Vertex {self._graph[label].vs[i]['uid']} assigned to community {community_id}.")
         community_ids = list(set(f"community_{cid}" for cid in membership))
-        await run_in_executor(None, self._save)
+        await run_in_executor(None, self._save, label)
         return community_ids
 
     async def discover_communities(
@@ -409,12 +414,12 @@ class IGraphStore(GraphStorage):
 
     async def get_community(self, label: str, community_id: str) -> GraphCommunity:
         """Get vertices in a specific community."""
-        if not self._graph:
-            self.load_graph()
+        if not self._graph or label not in self._graph:
+            self._create(label)
         if not community_id:
             raise ValueError("Community ID is required.")
-        # self._graph.vs.select(label_eq=label)
-        vs = await run_in_executor(None, self._graph.vs.select, label=label, cid=community_id)
+        # self._graph[label].vs.select(label_eq=label)
+        vs = await run_in_executor(None, self._graph[label].vs.select, label=label, cid=community_id)
 
         if len(vs) == 0:
             logger.warning(f"No vertices found in community {community_id} with label {label}.")
@@ -433,13 +438,13 @@ class IGraphStore(GraphStorage):
             logger.warning(f"No vertices with UID found in community {community_id} with label {label}.")
             return None
         edges_seq: ig.EdgeSeq = await run_in_executor(
-            None, self._graph.es.select, source_in=vertices_uids, target_in=vertices_uids, label_eq=label
+            None, self._graph[label].es.select, source_in=vertices_uids, target_in=vertices_uids, label_eq=label
         )
         edges_id = []
         for edge in edges_seq:
             attributes = edge.attributes()
-            attributes["source"] = self._graph.vs[edge.source]["uid"]
-            attributes["target"] = self._graph.vs[edge.target]["uid"]
+            attributes["source"] = self._graph[label].vs[edge.source]["uid"]
+            attributes["target"] = self._graph[label].vs[edge.target]["uid"]
             if "uid" in attributes and attributes["uid"] in edges_id:
                 continue
             edges_id.append(attributes["uid"])
@@ -455,21 +460,21 @@ class IGraphStore(GraphStorage):
 
     async def aupdate_vertices(self, label: str, nodes: List[GraphVertex]) -> List[GraphVertex]:
         """Update vertices in the graph with the given attributes."""
-        if not self._graph:
-            self.load_graph()
+        if not self._graph or label not in self._graph:
+            self._create(label)
         if not nodes:
             raise ValueError("No nodes provided for update.")
         uids = {node.uid: node for node in nodes}
         if not uids:
             logger.warning("No valid nodes provided for update. Ensure nodes have 'uid' attributes.")
             return []
-        if not self._graph.vs.attributes():
+        if not self._graph[label].vs.attributes():
             logger.warning("No attributes found in the graph vertices.")
             return []
         updated_keys = []
-        if uids and "label" in self._graph.vs.attributes():
+        if uids and "label" in self._graph[label].vs.attributes():
             existing_vertices: ig.VertexSeq = await run_in_executor(
-                None, self._graph.vs.select, label_eq=label, uid_in=list(uids.keys())
+                None, self._graph[label].vs.select, label_eq=label, uid_in=list(uids.keys())
             )
             vertices = {k: existing_vertices.get_attribute_values(k) for k in existing_vertices.attributes()}
             for index, existing_vertex in enumerate(existing_vertices):
@@ -492,20 +497,20 @@ class IGraphStore(GraphStorage):
             return []
         logger.info(f"Updated {len(nodes)} vertices in the graph.")
         # Save the graph after updating vertices
-        await run_in_executor(None, self._save)
+        await run_in_executor(None, self._save, index_name=label)
         return nodes
 
     async def aupdate_edges(self, label: str, edges: List[GraphEdge]) -> List[GraphEdge]:
         """Update edges in the graph with the given attributes."""
-        if not self._graph:
-            self.load_graph()
+        if not self._graph or label not in self._graph:
+            self._create(label)
         if not edges:
             raise ValueError("No edges provided for update.")
         updated_keys = []
         edge_keys_to_attrs = {f"{edge.source}#{edge.relation}#{edge.target}": edge for edge in edges}
-        if edge_keys_to_attrs and "label" in self._graph.es.attributes():
+        if edge_keys_to_attrs and "label" in self._graph[label].es.attributes():
             existing_edges: ig.EdgeSeq = await run_in_executor(
-                None, self._graph.es.select, label_eq=label, uid_in=list(edge_keys_to_attrs.keys())
+                None, self._graph[label].es.select, label_eq=label, uid_in=list(edge_keys_to_attrs.keys())
             )
             for index, existing_edge in enumerate(existing_edges):
                 attr = existing_edge.attributes()
@@ -527,37 +532,38 @@ class IGraphStore(GraphStorage):
             logger.warning("No edges were updated. Ensure the edges exist in the graph.")
             return []
         logger.info(f"Updated {len(edges)} edges in the graph.")
-        await run_in_executor(None, self._save)
+        await run_in_executor(None, self._save, index_name=label)
         return edges
 
     async def aselect_edges(self, label: str, attrs: Dict[str, Any]) -> List[GraphEdge]:
         """Select an edge by source and target."""
-        if not self._graph:
-            self.load_graph()
-        if "label" not in self._graph.es.attributes():
+        if not self._graph or label not in self._graph:
+            self._create(label)
+        if "label" not in self._graph[label].es.attributes():
             logger.warning("No label attribute found in the graph edges.")
             return []
-        ret: ig.EdgeSeq = await run_in_executor(None, self._graph.es.select, label_eq=label, **attrs)
+        ret: ig.EdgeSeq = await run_in_executor(None, self._graph[label].es.select, label_eq=label, **attrs)
         if not ret:
             return []
         edges: List[GraphEdge] = []
-        for index, edge in enumerate(ret):
+        for _, edge in enumerate(ret):
             attributes = edge.attributes()
             edges.append(GraphEdge(**attributes))
         return edges
 
-    def _get_edge_type(self, edge_idx: int) -> str:
+    def _get_edge_type(self, label: str, edge_idx: int) -> str:
         """获取边的类型"""
-        edge = self._graph.es[edge_idx]
+        edge = self._graph[label].es[edge_idx]
         return edge.attributes().get("relation_type", "")
 
-    def _get_edge_relation(self, edge_idx: int) -> str:
+    def _get_edge_relation(self, label: str, edge_idx: int) -> str:
         """获取边的关系"""
-        edge = self._graph.es[edge_idx]
+        edge = self._graph[label].es[edge_idx]
         return edge.attributes().get("relation", "")
 
     def _bfs_multi_hop(
         self,
+        label,
         start_nodes: List[str],
         relation_path: List[str],
         max_hops: int = 3,
@@ -590,7 +596,16 @@ class IGraphStore(GraphStorage):
 
         # 初始化队列
         for start_node in start_nodes:
-            start_node_index = self._graph.vs.find(uid=start_node).index
+            start_v: ig.Vertex = None
+            try:
+                start_v = self._graph[label].vs.find(uid=start_node)
+            except ValueError as e:
+                logger.error(f"Error finding start node {start_node} in graph with label {label}: {e}")
+                continue
+            if not start_v:
+                logger.warning(f"Start node {start_node} not found in the graph with label {label}.")
+                continue
+            start_node_index = start_v.index
             if avoid_cycles:
                 visited = {start_node_index}
             else:
@@ -608,9 +623,8 @@ class IGraphStore(GraphStorage):
                 continue
 
             # 获取当前节点的所有邻居
-            # current_node_index = self._graph.vs.find(uid=).index
-            neighbors = self._graph.neighbors(current_node)
-            incident_edges = self._graph.incident(current_node)
+            neighbors = self._graph[label].neighbors(current_node)
+            incident_edges = self._graph[label].incident(current_node)
 
             for neighbor, edge_idx in zip(neighbors, incident_edges):
                 # 避免循环
@@ -618,7 +632,7 @@ class IGraphStore(GraphStorage):
                     continue
 
                 # 获取边的类型
-                edge_type = self._get_edge_type(edge_idx)
+                edge_type = self._get_edge_type(label, edge_idx)
 
                 # 关系类型过滤
                 if rel_type and edge_type != rel_type:
@@ -626,7 +640,7 @@ class IGraphStore(GraphStorage):
 
                 # 关系路径过滤
                 if relation_path and hop_count < len(relation_path):
-                    relation = self._get_edge_relation(edge_idx)
+                    relation = self._get_edge_relation(label, edge_idx)
                     if not continuous:
                         if relation not in relation_path:
                             continue
@@ -643,8 +657,8 @@ class IGraphStore(GraphStorage):
                     new_visited = visited | {neighbor}
                 else:
                     new_visited = visited.copy()
-                vertex = self._graph.vs[neighbor]
-                edge = self._graph.es[edge_idx]
+                vertex = self._graph[label].vs[neighbor]
+                edge = self._graph[label].es[edge_idx]
                 # 检查是否已经存在该顶点和边
                 if vertex.attributes()["uid"] not in existing_vs:
                     existing_vs.add(vertex.attributes()["uid"])
@@ -694,11 +708,12 @@ class IGraphStore(GraphStorage):
             limit: 返回结果限制
         """
         # avoid_cycles: bool = (True,)
-        if not self._graph:
-            self.load_graph()
+        if not self._graph or label not in self._graph:
+            self._create(label)
         graph = await run_in_executor(
             None,
             self._bfs_multi_hop,
+            label=label,
             start_nodes=start_nodes_id,
             relation_path=relation_path,
             max_hops=max_hops if not relation_path else len(relation_path),
@@ -724,7 +739,8 @@ class IGraphStore(GraphStorage):
         """
         uids = [GraphHelper.generate_vertex_id(entity) for entity in entities]
         valid_entities = await self.aselect_vertices(label, {"uid_in": uids})
-
+        if not self._graph or label not in self._graph:
+            self._create(label)
         # 收集所有相关顶点
         relevant_vertices = set()
 
@@ -745,8 +761,8 @@ class IGraphStore(GraphStorage):
                 for v in current_level:
                     # 获取邻居（出边和入边）
 
-                    neighbors = set(self._graph.neighbors(v, mode="out"))
-                    neighbors.update(set(self._graph.neighbors(v, mode="in")))
+                    neighbors = set(self._graph[label].neighbors(v, mode="out"))
+                    neighbors.update(set(self._graph[label].neighbors(v, mode="in")))
 
                     for neighbor in neighbors:
                         if neighbor not in visited:
@@ -759,13 +775,13 @@ class IGraphStore(GraphStorage):
                     break
 
         # 构建子图
-        subgraph = await run_in_executor(None, self._graph.induced_subgraph, list(relevant_vertices))
+        subgraph = await run_in_executor(None, self._graph[label].induced_subgraph, list(relevant_vertices))
 
         # 提取子图中的实体和关系
         subgraph_entities: List[GraphVertex] = []
 
         for v_id in relevant_vertices:
-            vertex = self._graph.vs[v_id]
+            vertex = self._graph[label].vs[v_id]
             subgraph_entities.append(GraphVertex(**vertex.attributes()))
         edges: List[GraphEdge] = []
         # 提取子图中的边
@@ -862,15 +878,15 @@ class IGraphStore(GraphStorage):
             List[Dict[str, List[GraphVertex]]]: List of dictionaries with graph names as keys
             and lists of GraphVertex as values.
         """
-        if not self._graph:
-            self.load_graph()
-        if "label" not in self._graph.vs.attributes():
+        if not self._graph or label not in self._graph:
+            self._create(label)
+        if "label" not in self._graph[label].vs.attributes():
             logger.warning("No label attribute found in the graph vertices.")
             return {}
-        ret: ig.VertexSeq = await run_in_executor(None, self._graph.vs.select, label_eq=label, **attrs)
+        ret: ig.VertexSeq = await run_in_executor(None, self._graph[label].vs.select, label_eq=label, **attrs)
         if not ret:
             return {}
-        components = self._graph.connected_components()
+        components = self._graph[label].connected_components()
         membership = components.membership
         grouped_vertices: Dict[str, List[GraphVertex]] = {}
         for vertex in ret:
@@ -879,3 +895,65 @@ class IGraphStore(GraphStorage):
                 grouped_vertices[graph_name] = []
             grouped_vertices[graph_name].append(GraphVertex(**vertex.attributes()))
         return grouped_vertices
+
+    async def asearch_neibors(
+        self,
+        label: str,
+        vertex_id: str,
+        rel_type: Optional[str] = None,
+    ) -> GraphModel:
+        """
+        Search neighbors of a vertex in the graph.
+
+        Args:
+            vertex_id (str): The ID of the vertex to search neighbors for.
+            rel_type (Optional[str]): The type of relation to filter neighbors.
+
+        Returns:
+            GraphModel: A model containing the found vertices and edges.
+        """
+        if not self._graph or label not in self._graph:
+            self._create(label)
+        if not vertex_id:
+            raise ValueError("Vertex ID is required.")
+        if "label" not in self._graph[label].vs.attributes():
+            logger.warning("No label attribute found in the graph vertices.")
+            return None
+        vertex: ig.Vertex | None = None
+        try:
+            vertex = await run_in_executor(None, self._graph[label].vs.find, uid=vertex_id)
+        except Exception as e:
+            logger.error(f"Error finding vertex with ID {vertex_id}: {e}")
+            return None
+        if not vertex:
+            logger.warning(f"Vertex with ID {vertex_id} not found in the graph.")
+            return None
+        vertex_index = vertex.index
+        neighbors = await run_in_executor(None, self._graph[label].neighbors, vertex_index, mode="all")
+
+        if not neighbors:
+            logger.warning(f"No neighbors found for vertex {vertex_id}.")
+            return None
+
+        # Get edges connected to the vertex
+        incident_edges = self._graph[label].incident(vertex_index, mode="all")
+
+        # Filter edges by relation type if provided
+        if rel_type:
+            incident_edges = [edge for edge in incident_edges if self._get_edge_type(label, edge) == rel_type]
+
+        # Collect vertices and edges
+        vertices: List[GraphVertex] = []
+        edges: List[GraphEdge] = []
+
+        for neighbor in neighbors:
+            neighbor_vertex = self._graph[label].vs[neighbor]
+            vertices.append(GraphVertex(**neighbor_vertex.attributes()))
+
+        for edge_idx in incident_edges:
+            edge = self._graph[label].es[edge_idx]
+            # source_uid = self._graph[label].vs[edge.source]["uid"]
+            # target_uid = self._graph[label].vs[edge.target]["uid"]
+            edges.append(GraphEdge(**edge.attributes()))
+
+        return GraphModel(vertices=vertices, edges=edges)

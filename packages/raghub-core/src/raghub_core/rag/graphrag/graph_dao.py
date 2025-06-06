@@ -1,26 +1,29 @@
+import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
-from raghub_core.rag.base_rag import BaseGraphRAGStorage
+from raghub_core.rag.base_rag import BaseGraphRAGDAO
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_model import (
     GraphCommunity,
     GraphEdge,
     GraphModel,
     GraphVertex,
+    Namespace,
     QueryIndentationModel,
     RelationType,
     SearchIndentationCategory,
 )
+from raghub_core.schemas.hipporag_models import OpenIEInfo
 from raghub_core.storage.graph import GraphStorage
 from raghub_core.storage.structed_data import StructedDataStorage
 from raghub_core.storage.vector import VectorStorage
 from raghub_core.utils.graph.graph_helper import GraphHelper
 
 
-class GraphRAGStorage(BaseGraphRAGStorage):
+class GraphRAGDAO(BaseGraphRAGDAO):
     """
-    GraphRAGStorage is a concrete implementation of the BaseGraphRAGStorage class.
+    GraphRAGDAO is a concrete implementation of the BaseGraphRAGStorage class.
     It provides methods to manage graph storage in a RAG system.
     """
 
@@ -31,27 +34,33 @@ class GraphRAGStorage(BaseGraphRAGStorage):
         db: StructedDataStorage,
     ):
         """
-        Initialize the GraphRAGStorage with a specific storage backend.
+        Initialize the GraphRAGDAO with a specific storage backend.
         Args:
             storage (BaseGraphRAGStorage): The storage backend to use.
         """
         self.embedding_store = embedding_store
         self.graph_store = graph_store
         self.db = db
+        self._context_history_index = "{}_context_history"
         self._entities_index = "{}_entities"
         self._doc_index = "{}_docs"
+        self._communities_index = "{}_communities"
 
-    async def create(self, index_name: str):
+    async def create(self, unique_name: str) -> None:
         """
         Create a new index in the graph storage system.
-        The index name should be unique.
         Args:
-            index_name (str): Name of the index to create.
+            unique_name (str): Name of the index to create.
         Returns:
             None
         """
-        # await self.graph_store.create_new_index(index_name)
         pass
+        # Create a new index in the graph storage
+        # await self.graph_store.create(unique_name)
+        # await self.embedding_store.create(self._entities_index.format(unique_name))
+        # await self.embedding_store.create(self._doc_index.format(unique_name))
+        # await self.embedding_store.create(self._context_history_index.format(unique_name))
+        # await self.embedding_store.create(self._communities_index.format(unique_name))
 
     async def add_documents(self, index_name: str, documents: List[Document]) -> List[Document]:
         """
@@ -114,7 +123,88 @@ class GraphRAGStorage(BaseGraphRAGStorage):
         Returns:
             None
         """
-        pass
+        # search all entities and docs by doc_ids
+        tasks = []
+        for doc_id in doc_ids if isinstance(doc_ids, list) else [doc_ids]:
+            tasks.append(self.graph_store.asearch_neibors(unique_name, doc_id))
+        results: List[GraphModel] = await asyncio.gather(*tasks)
+        if not results or all(not res for res in results):
+            logger.warning(f"No vertices found for doc_ids: {doc_ids} in index: {unique_name}")
+            return
+
+        def _delete_doc_entities(doc_id: str, vertices: List[GraphVertex]) -> List[str]:
+            """
+            Filter vertices to delete those that are not entities.
+            Args:
+                doc_id (str): The document ID to filter vertices by.
+                vertices (List[GraphVertex]): List of vertices to filter.
+            Returns:
+                List[GraphVertex]: Filtered list of vertices.
+            """
+            already_deleted: List[str] = []
+            for vertex in vertices:
+                vertex.doc_id.remove(doc_id)
+                if not vertex.doc_id:
+                    already_deleted.append(vertex.uid)
+            return already_deleted
+
+        vertices_to_delete = []
+        for i, result in enumerate(results):
+            if result:
+                result.vertices = [v for v in result.vertices if v.namespace == Namespace.ENTITY.value]
+                already_deleted = _delete_doc_entities(doc_ids[i], result.vertices)
+                vertices_to_delete.extend(already_deleted)
+                to_updated = [v for v in result.vertices if v.uid not in already_deleted]
+                if to_updated:
+                    logger.debug(f"Updating vertices for doc_id: {doc_ids[i]} in index: {unique_name}")
+                    await self.graph_store.aupdate_vertices(unique_name, to_updated)
+        if not vertices_to_delete:
+            logger.warning(f"No vertices to delete for doc_ids: {doc_ids} in index: {unique_name}")
+            return
+        # Delete vertices from the graph storage
+        vertices_to_delete.extend(doc_ids if isinstance(doc_ids, list) else [doc_ids])
+        vertices_to_delete = list(set(vertices_to_delete))  # Remove duplicates
+        if not vertices_to_delete:
+            logger.warning(f"No vertices to delete for index: {unique_name}")
+            return
+        logger.debug(f"Deleting vertices: {vertices_to_delete} from index: {unique_name}")
+        delete_tasks = []
+        delete_tasks.append(self.graph_store.adelete_vertices(unique_name, vertices_to_delete))
+        delete_tasks.append(self.embedding_store.delete(self._entities_index.format(unique_name), vertices_to_delete))
+        delete_tasks.append(
+            self.embedding_store.delete(
+                self._doc_index.format(unique_name), doc_ids if isinstance(doc_ids, list) else [doc_ids]
+            )
+        )
+        doc_ids = doc_ids if isinstance(doc_ids, list) else [doc_ids]
+        histories = await self.embedding_store.select_on_metadata(
+            self._context_history_index.format(unique_name), {"doc_id": doc_ids}
+        )
+        logger.debug(f"Found {len(histories)} context histories for doc_ids: {doc_ids} in index: {unique_name}")
+        if histories:
+            delete_tasks.append(
+                self.embedding_store.delete(
+                    self._context_history_index.format(unique_name),
+                    [doc.uid for doc in histories],
+                )
+            )
+        communities = await self.embedding_store.select_on_metadata(
+            self._communities_index.format(unique_name), {"doc_id": doc_ids}
+        )
+        logger.debug(f"Found {len(communities)} communities for doc_ids: {doc_ids} in index: {unique_name}")
+        if communities:
+            cids = [doc.uid for doc in communities]
+            if not doc_ids:
+                logger.warning(f"No communities found for doc_ids: {cids} in index: {unique_name}")
+            else:
+                logger.debug(f"Deleting communities: {[doc.uid for doc in communities]} from index: {unique_name}")
+                delete_tasks.append(
+                    self.embedding_store.delete(
+                        self._communities_index.format(unique_name),
+                        [doc.uid for doc in communities],
+                    )
+                )
+        await asyncio.gather(*delete_tasks)
 
     async def init(self) -> None:
         """
@@ -200,23 +290,12 @@ class GraphRAGStorage(BaseGraphRAGStorage):
             List[GraphCommunity]: List of communities matching the query.
         """
         results = await self.embedding_store.asimilar_search_with_scores(label, query, top_k)
-        logger.debug(f"Found {[similar for _, similar in results]} communities for query: {query}")
+        logger.debug(f"Found {[(d.uid, similar) for d, similar in results]} communities for query: {query}")
         return [
             GraphCommunity(cid=doc.uid, summary=doc.content, name=doc.uid)
             for doc, score in results
             if score >= similar_threshold
         ]
-
-    # async def search_graph_by_triple(self, index_name: str, triple: Triple) -> Optional[GraphModel]:
-    #     start_nodes = [compute_mdhash_id(triple.subject, Namespace.ENTITY.value)]
-    #     graph = await self.graph_store.multi_hop_search(
-    #         index_name, Namespace.ENTITY.value, start_nodes, RelationType.INCLUDE.value
-    #     )
-    #     if not graph:
-    #         return None
-    #     for edge in graph.edges:
-    #         if edge.relation and set(triple.predicate).intersection(set(edge.relation)):
-    #             return graph
 
     async def search_graph_by_indent(self, index_name: str, indent: QueryIndentationModel) -> Optional[GraphModel]:
         """
@@ -396,7 +475,7 @@ class GraphRAGStorage(BaseGraphRAGStorage):
             return []
         return await self.graph_store.aselect_vertices(index_name, uid_in=ids)
 
-    async def save_openie_info(self, unique_name, openie_info):
+    async def save_openie_info(self, unique_name, openie_info: OpenIEInfo):
         pass
         # return await super().save_openie_info(unique_name, openie_info)
 

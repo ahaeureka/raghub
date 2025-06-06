@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
 from raghub_core.operators.graph.query_indent_det import QueryIndentDetectionOperator
-from raghub_core.rag.base_rag import BaseGraphRAGStorage, BaseRAG
+from raghub_core.rag.base_rag import BaseGraphRAGDAO, BaseRAG
 from raghub_core.rag.graphrag.operators import GraphRAGOperators
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_extract_model import GraphExtractOperatorOutputModel
@@ -29,9 +29,9 @@ class GraphRAGImpl(BaseRAG):
     GraphRAG implementation.
     """
 
-    def __init__(self, llm: BaseChat, storage: BaseGraphRAGStorage, operators: GraphRAGOperators):
+    def __init__(self, llm: BaseChat, dao: BaseGraphRAGDAO, operators: GraphRAGOperators):
         self.llm = llm
-        self.storage = storage
+        self.storage = dao
         self._topk = 5
         self._score_threshold = 0.5
         self._max_chunks_once_load = 10
@@ -41,6 +41,7 @@ class GraphRAGImpl(BaseRAG):
         self._entities_index = "{}_entities"
         self._doc_index = "{}_docs"
         self._communities_index = "{}_communities"
+        self.lock = asyncio.Lock()
 
     def init(self):
         pass
@@ -49,24 +50,11 @@ class GraphRAGImpl(BaseRAG):
         pass
 
     async def delete(self, unique_name: str, doc_ids: List[str] | str) -> None:
-        pass
+        await self.storage.delete(
+            unique_name,
+            [doc_ids] if isinstance(doc_ids, str) else doc_ids,
+        )
 
-    # @classmethod
-    # def create(self,
-    #            llm_name: str,
-    #            embedding_model_name: str,
-    #            llm_api_key:str,
-    #            llm_base_url:str
-
-    #            ) -> "GraphRAGImpl":
-    #     llm = OpenAIProxyChat(os.environ["LLM_MODEL_NAME"],os.environ["OPENAI_API_KEY"],os.environ["OPENAI_API_BASE"])
-    #     embbedder = OpenAIEmbedding(
-    #         os.environ["OPENAI_API_KEY"], model_name=os.environ["EMBEDDING_MODEL_NAME"], base_url=os.environ["OPENAI_API_BASE"]  # noqa: E501
-    #     )
-    #     vector = ChromaDBVectorStorage(embbedder)
-    #     graph = IGraphStore(ProjectHelper.get_project_root() / "cache/graph")
-    #     storage = GraphRAGStorage()
-    #     GraphRAGImpl()
     def _to_virtices(
         self, index_name: str, entities: List[Document], doc: Document, entities_facts: Dict[str, List[str]]
     ) -> List[GraphVertex]:
@@ -79,7 +67,7 @@ class GraphRAGImpl(BaseRAG):
                     uid=entity.uid,
                     name=entity.uid,
                     content=entity.content,
-                    description=[entity.summary],
+                    description={doc.uid: entity.summary},
                     metadata=entity.metadata,
                     namespace=Namespace.ENTITY.value,
                     embedding=entity.embedding,
@@ -92,7 +80,7 @@ class GraphRAGImpl(BaseRAG):
                 uid=doc.uid,
                 name=doc.uid,
                 content=doc.content,
-                description=[],
+                description={},
                 metadata=doc.metadata,
                 namespace=Namespace.DOC.value,
                 label=index_name,
@@ -116,7 +104,7 @@ class GraphRAGImpl(BaseRAG):
                     weight=1.0,
                     relation_type=RelationType.RELATION,
                     relation=edge[1],
-                    description=[edge[3]],
+                    description={doc_id: edge[3]},
                     label=index_name,
                     edge_metadata={
                         "doc_id": doc_id,
@@ -148,12 +136,26 @@ class GraphRAGImpl(BaseRAG):
                     edge_metadata={},
                     weight=1.0,
                     relation_type=RelationType.INCLUDE,
-                    description=[f"Entity {entity.content} is included in document {doc_content}."],
+                    description={doc.uid: f"Entity {entity.content} is included in document {doc_content}."},
                 )
             )
         # for edge in edges:
         #     edge.uid = compute_mdhash_id(GraphHelper.format_edge(edge), "edge")
         return edges
+
+    def _entities_bind_to_docs(self, entities: List[Document], doc: Document) -> List[Document]:
+        """
+        Bind entities to documents.
+        Args:
+            index_name: Name of the index.
+            entities: List of Document objects representing entities.
+            doc: Document object representing the main document.
+        Returns:
+            List of Document objects with updated metadata.
+        """
+        entity_ids = [entity.uid for entity in entities]
+        doc.metadata["entities"] = entity_ids
+        return doc
 
     async def _add_document(
         self, index_name: str, document: Document, ge: GraphExtractOperatorOutputModel, lang="en"
@@ -175,22 +177,23 @@ class GraphRAGImpl(BaseRAG):
             ]
         )
 
-        edges = self._to_edges(index_name, ge, document.content)
+        edges = self._to_edges(index_name, ge, document.uid)
         for edge in edges:
             if edge.source not in entities_facts:
                 entities_facts[edge.source] = []
             entities_facts[edge.source].append(
-                "#".join([edge.source, edge.relation_type, edge.target, edge.description[0]])
+                "#".join([edge.source, edge.relation_type, edge.target, edge.description[document.uid]])
             )
             if edge.target not in entities_facts:
                 entities_facts[edge.target] = []
             entities_facts[edge.target].append(
-                "#".join([edge.source, edge.relation_type, edge.target, edge.description[0]])
+                "#".join([edge.source, edge.relation_type, edge.target, edge.description[document.uid]])
             )
         # logger.debug(f"Entities extracted: {entities}")
         entities = await self.storage.add_documents(self._entities_index.format(index_name), entities)
         logger.debug(f"Entities added: {[entity.content for entity in entities]}")
         storage_tasks = []
+        document = self._entities_bind_to_docs(entities, document)
         storage_tasks.append(self.storage.add_documents(self._doc_index.format(index_name), [document]))
         storage_tasks.append(
             self.storage.add_virtices(index_name, self._to_virtices(index_name, entities, document, entities_facts))
@@ -203,7 +206,7 @@ class GraphRAGImpl(BaseRAG):
         await self.storage.add_edges(index_name, edges)
         communities = await self.summary_communities(index_name, lang)
         if communities:
-            await self._save_communities(self._communities_index.format(index_name), communities)
+            await self._save_communities(self._communities_index.format(index_name), communities, document.uid)
         return document
 
     async def add_documents(self, index_name, documents: List[Document], lang="en"):
@@ -213,7 +216,10 @@ class GraphRAGImpl(BaseRAG):
             documents: List of Document objects to add.
             lang: Language of the documents.
         """
-        text_context_map = await self.aload_chunk_context(index_name, [doc.content for doc in documents])
+        for i, document in enumerate(documents):
+            if not document.uid:
+                document.uid = compute_mdhash_id(document.content, Namespace.DOC.value)
+        text_context_map = await self.aload_chunk_context(index_name, documents)
         tasks = []
         for key, context in text_context_map.items():
             tasks.append(
@@ -224,14 +230,8 @@ class GraphRAGImpl(BaseRAG):
             )
         # openie_infos: List[OpenIEInfo] = []
         results: List[GraphExtractOperatorOutputModel] = await asyncio.gather(*tasks, return_exceptions=False)
-        for result in results:
-            if isinstance(result, Exception):
-                raise RuntimeError(f"Error during graph extraction: {str(result)}") from result
-            logger.debug(f"Graph extraction result: {result.entities} {result.triples}")
         tasks = []
         for i, document in enumerate(documents):
-            if not document.uid:
-                document.uid = compute_mdhash_id(document.content, Namespace.DOC.value)
             tasks.append(self._add_document(index_name, document, results[i], lang))
         documents = await asyncio.gather(*tasks, return_exceptions=False)
         for i, document in enumerate(documents):
@@ -241,13 +241,17 @@ class GraphRAGImpl(BaseRAG):
             logger.info(f"Document {document.uid} added successfully.")
         return documents
 
-    async def _save_communities(self, index: str, communities: List[GraphCommunity]) -> List[Document]:
+    async def _save_communities(self, index: str, communities: List[GraphCommunity], doc_uid) -> List[Document]:
         docs = [
             Document(
                 uid=c.cid,
                 content=c.summary,
                 summary=c.summary,
-                metadata={"total": len(communities), "vertices": list(set(vs.name for vs in c.graph.vertices))},
+                metadata={
+                    "total": len(communities),
+                    "vertices": list(set(vs.name for vs in c.graph.vertices)),
+                    "doc_id": [doc_uid],
+                },
             )
             for c in communities
         ]
@@ -255,23 +259,27 @@ class GraphRAGImpl(BaseRAG):
 
     async def summary_communities(self, label: str, lang="zh") -> Optional[GraphCommunity]:
         """Summarize single community."""
-        community_ids = await self.storage.discover_communities(label)
-        logger.debug(f"Found {community_ids} communities to summarize in label '{label}'.")
-        tasks = []
-        communities: List[GraphCommunity] = []
-        for cid in community_ids:
-            community: GraphCommunity = await self.storage.get_community(label, cid)
-            communities.append(community)
-            graph = GraphHelper.format_community(community)
-            tasks.append(self._operators.summarize_communities({"graph": graph}, lang))
-        results: List[SummarizeOperatorOutputModel] = await asyncio.gather(*tasks, return_exceptions=False)
-        for i, community in enumerate(communities):
-            # community.cid = compute_mdhash_id(results[i].summary, prefix="community")
-            communities[i].summary = results[i].summary
-            # logger.info(f"Summarize community {community}: {community.summary[:50]}...")
-        return communities
+        async with self.lock:
+            community_ids = await self.storage.discover_communities(label)
+            logger.debug(f"Found {community_ids} communities to summarize in label '{label}'.")
+            tasks = []
+            communities: List[GraphCommunity] = []
+            for cid in community_ids:
+                community: GraphCommunity = await self.storage.get_community(label, cid)
+                if not community:
+                    logger.warning(f"Community with ID {cid} not found in label '{label}'.")
+                    continue
+                communities.append(community)
+                graph = GraphHelper.format_community(community)
+                tasks.append(self._operators.summarize_communities({"graph": graph}, lang))
+            results: List[SummarizeOperatorOutputModel] = await asyncio.gather(*tasks, return_exceptions=False)
+            for i, community in enumerate(communities):
+                # community.cid = compute_mdhash_id(results[i].summary, prefix="community")
+                communities[i].summary = results[i].summary
+                # logger.info(f"Summarize community {community}: {community.summary[:50]}...")
+            return communities
 
-    async def aload_chunk_context(self, index_name: str, texts: List[str]) -> Dict[str, str]:
+    async def aload_chunk_context(self, index_name: str, texts: List[Document]) -> Dict[str, str]:
         """Load chunk context."""
         text_context_map: Dict[str, str] = {}
         tasks = []
@@ -279,7 +287,7 @@ class GraphRAGImpl(BaseRAG):
             # Load similar chunks
             tasks.append(
                 self.storage.similar_search_with_scores(
-                    self._context_history_index.format(index_name), text, self._topk
+                    self._context_history_index.format(index_name), text.content, self._topk
                 )
             )
         histroies = []
@@ -291,12 +299,12 @@ class GraphRAGImpl(BaseRAG):
             chunks.sort(key=lambda x: x[1], reverse=True)
             history = [f"Section {i + 1}:\n{chunk[0].content}" for i, chunk in enumerate(chunks)]
             context = "\n".join(history) if history else ""
-            text_context_map[text] = context
+            text_context_map[text.content] = context
             histroies.append(
                 Document(
-                    uid=compute_mdhash_id(text, Namespace.CONTEXT.value),
-                    content=text,
-                    metadata={"relevant_cnt": len(history), "doc_id": compute_mdhash_id(text, Namespace.CONTEXT.value)},
+                    uid=compute_mdhash_id(text.content, Namespace.CONTEXT.value),
+                    content=text.content,
+                    metadata={"relevant_cnt": len(history), "doc_id": [text.uid]},
                 )
             )
         await self.storage.add_documents(self._context_history_index.format(index_name), histroies)
@@ -341,9 +349,7 @@ class GraphRAGImpl(BaseRAG):
             graph = await self.storage.search_graph_by_indent(unique_name, query_indent)
             if graph and graph.vertices:
                 docs = [
-                    Document(
-                        content=doc.content, summary="\n".join(doc.description), uid=doc.uid, metadata=doc.metadata
-                    )
+                    Document(content=doc.content, summary=doc.description[doc.uid], uid=doc.uid, metadata=doc.metadata)
                     for doc in graph.vertices
                     if doc.namespace == Namespace.DOC.value
                 ]
@@ -353,9 +359,7 @@ class GraphRAGImpl(BaseRAG):
             graph = await self._search_subgraph(unique_name, keywords, query_indent, top_k)
             if graph and graph.vertices:
                 docs = [
-                    Document(
-                        content=doc.content, summary="\n".join(doc.description), uid=doc.uid, metadata=doc.metadata
-                    )
+                    Document(content=doc.content, summary=doc.description[doc.uid], uid=doc.uid, metadata=doc.metadata)
                     for doc in graph.vertices
                     if doc.namespace == Namespace.DOC.value
                 ]
@@ -416,32 +420,7 @@ class GraphRAGImpl(BaseRAG):
                 doc_id_to_score.update({doc[0].uid: doc[1] for doc in result})
         if not similar_entities:
             return []
-        # group: Dict[str, List[GraphVertex]] = await self.storage.aselect_vertices_group_by_graph(
-        #     index_name, {"uid_in": [doc.uid for doc in similar_entities]}
-        # )
 
-        # def mean_score(group: Dict[str, List[GraphVertex]]):
-        #     """Calculate mean score for each group of vertices."""
-        #     scores = {}
-        #     for key, vertices in group.items():
-        #         total_score = sum(doc_id_to_score.get(v.uid, 0) for v in vertices)
-        #         scores[key] = total_score / len(vertices) if vertices else 0
-        #     return scores
-
-        # group_scores = mean_score(group)
-        # if group_scores:
-        #     best_group_key = max(group_scores, key=group_scores.get)
-        #     best_vertices = group[best_group_key]
-        #     similar_entities = [
-        #         Document(
-        #             content=v.content,
-        #             summary="\n".join(v.description),
-        #             uid=v.uid,
-        #             metadata=v.metadata,
-        #             embedding=v.embedding,
-        #         )
-        #         for v in best_vertices
-        #     ]
         return similar_entities
 
     async def qa(self, unique_name: str, query: str, top_k: int = 5) -> GraphRAGRetrieveResultItem:

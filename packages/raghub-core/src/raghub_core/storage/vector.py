@@ -15,6 +15,15 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod
+    async def create_index(self, index_name: str) -> None:
+        """
+        Create a new index in the vector storage.
+        Args:
+            index_name: Name of the index to create.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
+    @abstractmethod
     async def add_documents(self, index_name: str, texts: List[Document]) -> List[Document]:
         raise NotImplementedError("Subclasses should implement this method.")
 

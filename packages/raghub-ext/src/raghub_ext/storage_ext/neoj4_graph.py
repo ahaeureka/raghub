@@ -150,7 +150,7 @@ class Neo4jGraphStorage(GraphStorage):
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
         try:
             async with self._driver.session() as session:
-                result = []
+                result: List[Dict[str, Any]] = []
                 if not attrs:
                     result = await session.run(query)
                 else:
@@ -325,39 +325,39 @@ class Neo4jGraphStorage(GraphStorage):
             embedding=vertex["embedding"],
         )
 
-    async def aaget_by_ids(self, ids: List[str]) -> List[Document]:
-        """
-        Retrieve documents by their IDs.
+    # async def aaget_by_ids(self, ids: List[str]) -> List[Document]:
+    #     """
+    #     Retrieve documents by their IDs.
 
-        Args:
-            ids: List of vertex names to retrieve
+    #     Args:
+    #         ids: List of vertex names to retrieve
 
-        Returns:
-            List of Document objects
-        """
-        if not self._driver:
-            raise ValueError("Neo4j driver is not initialized. Call init() first.")
-        try:
-            async with self._driver.session() as session:
-                result = await session.run(
-                    """
-                    UNWIND $ids AS id
-                    MATCH (n {name: id})
-                    RETURN {
-                        content: n.content,
-                        metadata: n.metadata,
-                        uid: n.uid,
-                        name: n.name,
-                        embedding: n.embedding,
-                        namespace: n.namespace,
-                        openie_idx: n.openie_idx,
-                        entities: n.entities,
-                        facts: n.facts,
-                    } AS doc
-                    """,
-                    ids=ids,
-                )
-                return [Document(self._vertex_to_doc(record["doc"])) for record in result]
-        except Exception as e:
-            logger.error(f"Error retrieving documents: {e}")
-            raise
+    #     Returns:
+    #         List of Document objects
+    #     """
+    #     if not self._driver:
+    #         raise ValueError("Neo4j driver is not initialized. Call init() first.")
+    #     try:
+    #         async with self._driver.session() as session:
+    #             result = await session.run(
+    #                 """
+    #                 UNWIND $ids AS id
+    #                 MATCH (n {name: id})
+    #                 RETURN {
+    #                     content: n.content,
+    #                     metadata: n.metadata,
+    #                     uid: n.uid,
+    #                     name: n.name,
+    #                     embedding: n.embedding,
+    #                     namespace: n.namespace,
+    #                     openie_idx: n.openie_idx,
+    #                     entities: n.entities,
+    #                     facts: n.facts,
+    #                 } AS doc
+    #                 """,
+    #                 ids=ids,
+    #             )
+    #             return [Document(self._vertex_to_doc(record["doc"])) for record in result]
+    #     except Exception as e:
+    #         logger.error(f"Error retrieving documents: {e}")
+    #         raise

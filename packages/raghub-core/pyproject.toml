@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
  "aiosqlite>=0.21.0",
+ "asyncstdlib>=3.13.1",
  "diskcache>=5.6.3",
  "einops>=0.8.1",
  "filetype>=1.2.0",
@@ -13,6 +14,7 @@ dependencies = [
  "gritlm>=1.0.2",
  "langchain>=0.3.24",
  "langchain-chroma>=0.1.2",
+ "langchain-community>=0.3.21",
  "langchain-openai>=0.3.14",
  "langid>=1.1.6",
  "loguru>=0.7.3",

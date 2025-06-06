@@ -3,7 +3,7 @@ import os
 
 from raghub_core.chat.openai_chat import OpenAIProxyChat
 from raghub_core.embedding.openai_embedding import OpenAIEmbedding
-from raghub_core.rag.graphrag.graph_storage import GraphRAGStorage
+from raghub_core.rag.graphrag.graph_dao import GraphRAGDAO
 from raghub_core.rag.graphrag.graphrag_impl import GraphRAGImpl
 from raghub_core.rag.graphrag.operators import DefaultGraphRAGOperators
 from raghub_core.rag.graphrag.prompts import GraphRAGContextPrompt
@@ -29,7 +29,7 @@ async def graphRAG():
     await vector.init()
     await graph.init()
     await sql.init()
-    storage = GraphRAGStorage(vector, graph, sql)
+    storage = GraphRAGDAO(vector, graph, sql)
     return GraphRAGImpl(llm, storage, DefaultGraphRAGOperators(llm, vector))
 
 
@@ -71,7 +71,8 @@ async def test_add_documents(graphRAG: GraphRAGImpl):
 async def main():
     graph = await graphRAG()
     graph.init()
-    # await test_add_documents(graph)
+    await test_add_documents(graph)
+    await graph.delete("test_graph_rag", ["doc-8476c90becef26e95227f23d8a710186"])
     result = await graph.retrieve(
         "test_graph_rag",
         [
@@ -80,13 +81,19 @@ async def main():
         ],
     )
     for key, value in result.items():
-        context=GraphRAGContextPrompt().get("zh").format_messages(
-            context=value.context,
-            query=value.query,
-            knowledge_graph=value.subgraph,
-            knowledge_graph_for_doc="\n".join([doc.content for doc in value.docs]),
-        )[0].content
+        context = (
+            GraphRAGContextPrompt()
+            .get("zh")
+            .format_messages(
+                context=value.context,
+                query=value.query,
+                knowledge_graph=value.subgraph,
+                knowledge_graph_for_doc="\n".join([doc.content for doc in value.docs]),
+            )[0]
+            .content
+        )
         from raghub_core.embedding.embedding_helper import tiktoken_encoder
+
         print(f"Query {value.query} for {context}")
         print(f"used {len(tiktoken_encoder.encode(context))} tokens")
     # You can add more tests here, like retrieval, deletion, etc.

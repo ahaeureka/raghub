@@ -52,12 +52,13 @@ class ChromaDBVectorStorage(VectorStorage):
             path=self.persist_directory.as_posix(),
         )
 
-    def _chromadb_store_for_index(self, index_name: str) -> VectorStore:
-        # Implement the logic to create or get a ChromaDB store for the given index name
-        # For now, we'll just return the client
-
+    # @lru_cache(maxsize=128)
+    def create_index(self, index_name: str) -> VectorStore:
+        """
+        Create a new index in ChromaDB.
+        """
         if not self._client:
-            self.init()
+            raise ValueError("ChromaDB client is not initialized. Call `init()` first.")
         from langchain_chroma import Chroma
 
         return Chroma(
@@ -67,6 +68,34 @@ class ChromaDBVectorStorage(VectorStorage):
             client=self._client,
         )
 
+    def _chromadb_store_for_index(self, index_name: str) -> VectorStore:
+        # Implement the logic to create or get a ChromaDB store for the given index name
+        # For now, we'll just return the client
+        return self.create_index(index_name)
+
+    def flatten_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Flatten metadata dictionary to a single level.
+        """
+        if not metadata:
+            return {}
+        new_metadata = {}
+        for key, value in metadata.items():
+            if isinstance(value, list):
+                new_metadata[key] = json.dumps(value, ensure_ascii=False)
+                for v in value:
+                    if isinstance(v, str):
+                        new_metadata[f"{key}.{v}"] = v
+                    elif isinstance(v, int):
+                        new_metadata[f"{key}.{v}"] = str(v)
+                    elif isinstance(v, float):
+                        new_metadata[f"{key}.{v}"] = str(v)
+                    elif isinstance(v, bool):
+                        new_metadata[f"{key}.{v}"] = str(v).lower()
+            else:
+                new_metadata[key] = value
+        return new_metadata
+
     def _metadata_values_to_string(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert metadata values to strings.
@@ -75,6 +104,15 @@ class ChromaDBVectorStorage(VectorStorage):
         for key, value in metadata.items():
             if isinstance(value, list):
                 new_metadata[key] = json.dumps(value, ensure_ascii=False)
+                for v in value:
+                    if isinstance(v, str):
+                        new_metadata[f"{key}.{v}"] = v
+                    elif isinstance(v, int):
+                        new_metadata[f"{key}.{v}"] = str(v)
+                    elif isinstance(v, float):
+                        new_metadata[f"{key}.{v}"] = str(v)
+                    elif isinstance(v, bool):
+                        new_metadata[f"{key}.{v}"] = str(v).lower()
             elif isinstance(value, dict):
                 new_metadata[key] = json.dumps(value, ensure_ascii=False)
             elif issubclass(value, BaseModel):
@@ -141,6 +179,9 @@ class ChromaDBVectorStorage(VectorStorage):
         # Implement the logic to delete documents by their IDs from ChromaDB
         if not self._client:
             await self.init()
+        if not ids:
+            logger.warning("No IDs provided for deletion.")
+            return False
         await self._chromadb_store_for_index(index_name).adelete(ids=list(set(ids)))
         return True
 
@@ -150,9 +191,27 @@ class ChromaDBVectorStorage(VectorStorage):
             await self.init()
         # {"$and": [{"color": "red"}, {"price": 4.20}]}
         query = metadata_filter
-        if len(list(metadata_filter.keys())) > 1:
-            query = {"$and": [{key: value} for key, value in metadata_filter.items()]}
+        _filter = {}
+        for key, value in metadata_filter.items():
+            if isinstance(value, list):
+                for v in value:
+                    if isinstance(v, str):
+                        _filter[f"{key}.{v}"] = v
+                    elif isinstance(v, int):
+                        _filter[f"{key}.{v}"] = str(v)
+                    elif isinstance(v, float):
+                        _filter[f"{key}.{v}"] = str(v)
+                    elif isinstance(v, bool):
+                        _filter[f"{key}.{v}"] = str(v).lower()
+            else:
+                _filter[key] = value
+                # del metadata_filter[key]
+        if len(list(_filter.keys())) > 1:
+            query = {"$and": [{key: value} for key, value in _filter.items()]}
+        else:
+            query = _filter
         logger.debug(f"select_on_metadata: {query}")
+
         results = await run_in_executor(
             None,
             self._chromadb_store_for_index(index_name).get,
@@ -167,13 +226,14 @@ class ChromaDBVectorStorage(VectorStorage):
         if not results["documents"]:
             return []
         for index, result in enumerate(results["documents"]):
+            # logger.debug(f"Building document {index} with ID {results}")
             doc = Document(
                 content=result,
-                metadata=self._string_metadata_to_values(results["metadatas"][index]),
+                metadata=results["metadatas"][index],
                 uid=results["ids"][index],
                 embedding=results["embeddings"][index],
             )
-            doc.summary = doc.metadata.get("summary", "")
+            doc.summary = doc.metadata.get("summary", "") if doc.metadata else ""
             documents.append(doc)
         return documents
 
