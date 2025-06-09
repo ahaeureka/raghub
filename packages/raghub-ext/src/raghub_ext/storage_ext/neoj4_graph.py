@@ -240,7 +240,7 @@ class Neo4jGraphStorage(GraphStorage):
             # Check if graph exists
             async with self._driver.session() as session:
                 graph_name = f"{label}_ppr_graph"
-                result = await session.run(
+                await session.run(
                     f"CALL gds.graph.drop('{graph_name}', false)",
                 )
                 create_graph_query = f"""
@@ -726,29 +726,26 @@ class Neo4jGraphStorage(GraphStorage):
             # Execute leiden community detection
             async with self._driver.session(database=self._graph) as session:
                 # Check if graph exists
-                result = await session.run(
-                    "CALL gds.graph.list() YIELD graphName RETURN graphName",
+                graph_name = f"{label}_community_graph"
+                await session.run(
+                    f"CALL gds.graph.drop('{graph_name}', false)",
                 )
-                existing_graphs = [record["graphName"] async for record in result]
-                graph_name = f"{label}Graph"
 
                 # Create graph if it doesn't exist
-                if graph_name not in existing_graphs:
-                    logger.info(f"Graph '{graph_name}' does not exist. Creating...")
-                    await session.run(
-                        f"""
-MATCH (source:{label})-[r]->(target:{label})
-RETURN gds.graph.project(
-$graph_name,
-  source,
-  target,
-  {{}},
-  {{ undirectedRelationshipTypes: ['*'] }}
+                await session.run(
+                    f"""
+                    MATCH (source:{label})-[r]->(target:{label})
+                    RETURN gds.graph.project(
+                    $graph_name,
+                      source,
+                      target,
+                      {{}},
+                      {{ undirectedRelationshipTypes: ['*'] }}
                         )
-                        """,
-                        graph_name=graph_name,
-                    )
-                    logger.info(f"Graph '{graph_name}' created successfully.")
+                    """,
+                    graph_name=graph_name,
+                )
+                logger.info(f"Graph '{graph_name}' created successfully.")
                 # Run leiden algorithm
                 logger.info(f"Running leiden community discovery with config: {leiden_config}")
                 leiden_result = await session.run(
