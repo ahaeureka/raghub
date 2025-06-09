@@ -19,8 +19,7 @@ class LocalSQLStorage(StructedDataStorage):
 
     async def init(self):
         if self.db_url.startswith("sqlite://"):
-            print(f"Using SQLite database:{self.db_url}")
-            self.db_url = self.db_url.replace("sqlite://", "sqlite+aiosqlite://")
+            self.db_url = self.db_url.replace("sqlite://", "sqlite+aiosqlite:///")
         path = self.db_url.split("://")[-1]
         logger.debug(f"Initializing SQLite database at {self.db_url}")
         path_dir = os.path.dirname(path)
@@ -28,6 +27,7 @@ class LocalSQLStorage(StructedDataStorage):
         self._engine = create_async_engine(self.db_url)
         async with self._engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)
+        logger.debug("SQLite database initialized successfully.")
 
     def get_engine(self) -> Engine:
         if self._engine is None:

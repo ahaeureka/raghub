@@ -11,7 +11,7 @@ class VectorStorage(metaclass=SingletonRegisterMeta):
     # name = None
     # _registry: Dict[str, Type["VectorStorage"]] = {}  # 注册表
     @abstractmethod
-    def init(self):
+    async def init(self):
         raise NotImplementedError("Subclasses should implement this method.")
 
     @abstractmethod

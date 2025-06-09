@@ -6,7 +6,6 @@ ARG USERNAME
 ARG USE_MIRROR_UBUNTU="true"
 ARG EXTRAS="online"
 
-ARG EXTRAS=""
 WORKDIR /app
 COPY . .
 USER root
@@ -39,10 +38,15 @@ RUN if [ "$USE_MIRROR_UBUNTU" = "true" ]; then \
     && rm -rf /var/lib/apt/lists/*
 USER $USERNAME
 ENV LANG=zh_CN.UTF-8 \
-    LC_ALL=zh_CN.UTF-8
+    LC_ALL=zh_CN.UTF-8 \
+    PATH=${PATH}:/home/work/.local/bin
 RUN pip config set global.index-url $PIP_INDEX_URL && \
     pip config set global.trusted-host $(echo "$PIP_INDEX_URL" | sed -E 's|^https?://([^/]+).*|\1|') && \
     . $VIRTUAL_ENV/bin/activate  && \
-    extras=$(echo $EXTRAS | tr ',' '\n' | while read extra; do echo "--extra $extra"; done | tr '\n' ' ') && \
+    if [ -n "$EXTRAS" ]; then \
+        extras=$(echo "$EXTRAS" | tr ',' '\n' | while read extra; do echo "--extra $extra"; done | tr '\n' ' '); \
+    else \
+        extras="--all-extras"; \
+    fi && \
     uv sync -v --active --all-packages --default-index $PIP_INDEX_URL $extras --index-strategy unsafe-best-match --prerelease=allow --no-build-isolation && \
     cp .devcontainer/project.pth  /opt/.uv.venv/lib/python${PYTHON_VERSION}/site-packages/raghub.pth

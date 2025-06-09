@@ -77,7 +77,11 @@ class GraphExtractorOperator(BaseOperator[GraphExtractOperatorOutputModel]):
             context = "\n".join(history) if history else ""
             text_context_map[text] = context
             documents.append(
-                Document(content=text, metadata={"relevant_cnt": len(history)}, uid=compute_mdhash_id(text, "context"))
+                Document(
+                    content=text,
+                    metadata={"relevant_cnt": len(history)},
+                    uid=compute_mdhash_id(index_name, text, "context"),
+                )
             )
         await self._chunk_history.add_documents_filter_exists(index_name, documents)
         return text_context_map

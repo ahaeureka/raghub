@@ -11,8 +11,8 @@ class RelationType(StrEnum):
     Enum for relation types in a graph.
     """
 
-    RELATION = "RELATED"
-    INCLUDE = "INCLUDE"
+    RELATION = "RELATED_TO"
+    INCLUDE = "CONTAINS"
 
 
 class Namespace(StrEnum):
@@ -25,6 +25,7 @@ class Namespace(StrEnum):
     FACT = "fact"
     CONTEXT = "context"
     PASSAGE = "passage"
+    COMMUNITY = "community"
 
 
 class GraphVertex(BaseModel):

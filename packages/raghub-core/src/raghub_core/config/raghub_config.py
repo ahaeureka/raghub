@@ -189,6 +189,11 @@ class GraphStorageConfig(BaseParameters):
         description="Password for graph storage authentication",
         tags=["graph_storage"],
     )
+    database: Optional[str] = BaseParameters.field(
+        default=None,
+        description="Database name for graph storage",
+        tags=["graph_storage"],
+    )
 
 
 class RAGHubConfig(BaseParameters):
@@ -264,7 +269,7 @@ class SearchEngineConfig(BaseParameters):
         tags=["search"],
     )
     username: Optional[str] = BaseParameters.field(
-        default=None,
+        default="elastic",
         description="Search Engine Username",
         tags=["search"],
     )

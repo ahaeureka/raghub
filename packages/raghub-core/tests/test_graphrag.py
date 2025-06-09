@@ -45,7 +45,7 @@ async def test_add_documents(graphRAG: GraphRAGImpl):
     docs = [
         Document(
             content=text,
-            uid=compute_mdhash_id(text, "doc"),
+            uid=compute_mdhash_id("test_graph_rag", text, "doc"),
             metadata={
                 "source": "https://example.com/article",
                 "author": "张伟",

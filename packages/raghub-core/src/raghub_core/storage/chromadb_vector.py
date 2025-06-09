@@ -1,5 +1,6 @@
 import asyncio
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -52,7 +53,7 @@ class ChromaDBVectorStorage(VectorStorage):
             path=self.persist_directory.as_posix(),
         )
 
-    # @lru_cache(maxsize=128)
+    @lru_cache(maxsize=128)
     def create_index(self, index_name: str) -> VectorStore:
         """
         Create a new index in ChromaDB.

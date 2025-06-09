@@ -20,7 +20,7 @@ class ElasticsearchVectorStorage(VectorStorage):
         port: int = 9200,
         use_ssl: bool = False,
         verify_certs: bool = True,
-        username: Optional[str] = None,
+        username: Optional[str] = "elastic",
         password: Optional[str] = None,
         index_name_prefix: str = "raghub_index",
     ):
@@ -84,11 +84,13 @@ class ElasticsearchVectorStorage(VectorStorage):
 
         if not self._client:
             raise ValueError("Elasticsearch client is not initialized.")
+        from langchain_elasticsearch._utilities import DistanceStrategy
+
         return ElasticsearchStore(
             es_connection=self._client,
             index_name=f"{self._index_name_prefix}_{index_name}",
             embedding=self._build_embedding_function(),
-            distance_strategy="COSINE",
+            distance_strategy=DistanceStrategy.COSINE,
         )
 
     def _build_embedding_function(self) -> Embeddings:
@@ -113,14 +115,12 @@ class ElasticsearchVectorStorage(VectorStorage):
             else:
                 metadatas.append({})
 
-        # 批量插入
-        logger.debug(f"Adding {len(texts)} documents to Elasticsearch index {self._index_name_prefix}_{index_name}")
         if not self._client:
             raise ValueError("Elasticsearch client is not initialized.")
         ids = await self._es_store_for_index(index_name).aadd_texts(texts=contents, metadatas=metadatas, ids=ids)
         return await self.get_by_ids(index_name=index_name, ids=ids)
 
-    async def get(self, index_name: str, uid: str) -> Document:
+    async def get(self, index_name: str, uid: str) -> Optional[Document] | None:
         """
         根据 ID 获取单个文档
         """
@@ -145,15 +145,14 @@ class ElasticsearchVectorStorage(VectorStorage):
         docs: List[Document] = []  # noqa: F811
         for res in response["docs"]:
             if not res.get("found"):
-                logger.warning(f"Document with ID {res['_id']} not found.")
+                logger.warning(f"Document {index_name} with ID {res['_id']} not found:{res}.")
                 continue
             source = res["_source"]
-            doc = Document(
-                content=source["text"],
-                metadata=source["metadata"],
-                uid=res["_id"],
-                embedding=source["vector"],
-            )
+            source["uid"] = res["_id"]  # 将 _id 转换为 uid
+            source["content"] = source.get("text", "")
+            source["summary"] = source.get("metadata", {}).pop("summary", "")
+            source["embedding"] = source.pop("vector", [])
+            doc = Document(**source)
             docs.append(doc)
         return docs
 
@@ -174,7 +173,12 @@ class ElasticsearchVectorStorage(VectorStorage):
     def _build_metadata_query(self, metadata_filter: Dict[str, Any]) -> Dict[str, Any]:
         bool_query: Dict[str, Any] = {"bool": {"must": []}}
         for key, value in metadata_filter.items():
-            bool_query["bool"]["must"].append({"term": {f"metadata.{key}": value}})
+            if isinstance(value, list):
+                # 如果值是列表，则使用 terms 查询
+                bool_query["bool"]["must"].append({"terms": {f"metadata.{key}.keyword": value}})
+            else:
+                # 否则使用 term 查询
+                bool_query["bool"]["must"].append({"term": {f"metadata.{key}.keyword": value}})
         return bool_query
 
     async def select_on_metadata(self, index_name: str, metadata_filter: Dict[str, Any]) -> List[Document]:
@@ -194,6 +198,7 @@ class ElasticsearchVectorStorage(VectorStorage):
         }
         result = await self._async_client.search(index=f"{self._index_name_prefix}_{index_name}", body=query)
         if not result or len(result["hits"]["hits"]) == 0:
+            logger.warning(f"No documents found in index {self._index_name_prefix}_{index_name} with {result}")
             return []
 
         # 处理 Elasticsearch 返回的结果
@@ -241,7 +246,6 @@ class ElasticsearchVectorStorage(VectorStorage):
         results = await self._es_store_for_index(index_name).asimilarity_search_by_vector_with_relevance_scores(  # type: ignore[attr-defined]
             embedding=embedding, k=k, filter=[bool_query], doc_builder=_doc_builder
         )
-        logger.debug(f"es Similarity search results: {results}")
         return [(doc, score) for doc, score in results]
 
     async def similar_search_with_scores(
@@ -271,10 +275,14 @@ class ElasticsearchVectorStorage(VectorStorage):
 
         if filter:
             bool_query = self._build_metadata_query(filter)
-        results = await self._es_store_for_index(index_name).asimilarity_search_with_score(  # type: ignore[attr-defined]
-            query=query, k=k, filter=[bool_query], doc_builder=_doc_builder
-        )
-        logger.debug(f"es Similarity search results: {results}")
+        import elasticsearch
+
+        try:
+            results = await self._es_store_for_index(index_name).asimilarity_search_with_score(  # type: ignore[attr-defined]
+                query=query, k=k, filter=bool_query, doc_builder=_doc_builder
+            )
+        except elasticsearch.NotFoundError:
+            return []
         return [(doc, score) for doc, score in results]
 
     def _build_doc_from_result(self, result: Dict[str, Any]) -> List[Document]:
@@ -291,6 +299,28 @@ class ElasticsearchVectorStorage(VectorStorage):
                 metadata=result["metadatas"][i],
                 uid=result["ids"][i],
                 embedding=result["embeddings"][i],
+                summary=result["metadatas"][i]["summary"] if "summary" in result["metadatas"][i] else "",
             )
             documents.append(doc)
         return documents
+
+    async def asimilar_search_with_scores(self, index_name, query, k, filter=None):
+        """
+        Asynchronous similarity search with scores
+        Args:
+            index_name : str
+                The name of the index to search in.
+            query : str
+                The query string to search for.
+            k : int
+                The number of top results to return.
+            filter : Optional[Dict[str, str]]
+                Optional filter to apply to the search results.
+        Returns:
+            List[Tuple[Document, float]]:
+                A list of tuples containing the Document object and its corresponding score.
+        """
+        return await self.similar_search_with_scores(index_name, query, k, filter)
+
+    async def create_index(self, index_name):
+        pass

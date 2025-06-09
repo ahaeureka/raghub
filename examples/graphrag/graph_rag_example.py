@@ -55,7 +55,7 @@ async def test_add_documents(graphRAG: GraphRAGImpl):
     docs = [
         Document(
             content=text,
-            uid=compute_mdhash_id(text, "doc"),
+            uid=compute_mdhash_id("test_graph_rag",text, "doc"),
             metadata={
                 "source": "https://example.com/article",
                 "author": "张伟",
@@ -63,7 +63,7 @@ async def test_add_documents(graphRAG: GraphRAGImpl):
                 "tags": ["AI", "Quantum Computing", "GNN"],
             },
         ),
-        Document(content=text2, uid=compute_mdhash_id(text2, "doc"), metadata={}),
+        Document(content=text2, uid=compute_mdhash_id("test_graph_rag",text2, "doc"), metadata={}),
     ]
     await graphRAG.add_documents("test_graph_rag", docs, "zh")
 

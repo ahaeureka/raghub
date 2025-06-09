@@ -28,7 +28,7 @@ async def main():
         "Marina is bom in Minsk.",
         "Montebello is a part of Rockland County.",
     ]
-    docs = await impl.add_documents(unique_name, [Document(content=doc, uid=compute_mdhash_id(doc, "doc")) for doc in docs])
+    docs = await impl.add_documents(unique_name, [Document(content=doc, uid=compute_mdhash_id(unique_name,doc, "doc")) for doc in docs])
     queries = [
         "What is George Rankin's occupation?",
         # "How did Cinderella reach her happy ending?",

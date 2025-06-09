@@ -59,6 +59,7 @@ class ClassFactory:
         except ValueError:
             # 如果 __init__ 不存在（例如抽象类），使用 object.__init__ 作为默认
             signature = inspect.signature(object.__init__)
+            logger.warning(f"Using object.__init__ for {cls.__name__} as it has no __init__ method.")
 
         # 过滤 kwargs：只保留构造函数中声明的参数（排除 self）
         filtered_kwargs = {

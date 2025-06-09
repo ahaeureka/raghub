@@ -105,7 +105,7 @@ class HippoRAGImpl(BaseRAG):
         doc_to_triple_entities: Dict[str, List[List[str]]] = {}
         facts_str = []
         if not doc.uid:
-            doc.uid = compute_mdhash_id(doc.content, prefix=self._doc_prefix)
+            doc.uid = compute_mdhash_id(index_name, doc.content, prefix=self._doc_prefix)
         doc.metadata = doc.metadata or {}
         doc.metadata["namespace"] = Namespace.PASSAGE.value
         doc.metadata["openie_idx"] = doc.uid
@@ -122,8 +122,10 @@ class HippoRAGImpl(BaseRAG):
         doc_to_triple_entities[doc.uid] = triple_entities
         chunk_triples[doc.uid] = [(item[0], item[1], item[2]) for item in ie.triples if len(item) == 3]
         entities_str.extend([str(node) for node in graph_nodes])
-        doc.metadata["entities"] = [compute_mdhash_id(str(node), self._entity_prefix) for node in graph_nodes]
-        doc.metadata["facts"] = [compute_mdhash_id(str(fact), self._fact_prefix) for fact in ie.triples]
+        doc.metadata["entities"] = [
+            compute_mdhash_id(index_name, str(node), self._entity_prefix) for node in graph_nodes
+        ]
+        doc.metadata["facts"] = [compute_mdhash_id(index_name, str(fact), self._fact_prefix) for fact in ie.triples]
         facts = self._flatten_facts([ie.triples])
         facts_str.extend([str(fact) for fact in facts])
         entities_str = list(set(entities_str))
@@ -138,7 +140,7 @@ class HippoRAGImpl(BaseRAG):
         docs = await self._embedd_store.add_documents(index_name, [doc])
         entities_nodes = [
             Document(
-                uid=compute_mdhash_id(entity, self._entity_prefix),
+                uid=compute_mdhash_id(index_name, entity, self._entity_prefix),
                 content=entity,
                 metadata={
                     "namespace": Namespace.ENTITY.value,
@@ -150,8 +152,8 @@ class HippoRAGImpl(BaseRAG):
         ]
         await self._add_new_nodes(index_name, entities_nodes, docs)
 
-        ent_node_to_chunk_ids, node_to_node_stats = self._add_fact_edges(docs, chunk_triples)
-        num_new_chunks = self._add_passage_edges(docs, doc_to_triple_entities, node_to_node_stats)
+        ent_node_to_chunk_ids, node_to_node_stats = self._add_fact_edges(index_name, docs, chunk_triples)
+        num_new_chunks = self._add_passage_edges(index_name, docs, doc_to_triple_entities, node_to_node_stats)
         logger.info(f"Added {num_new_chunks} new chunks.")
         # if num_new_chunks > 0:
         entities: List[Document] = await self._embedd_store.select_on_metadata(
@@ -380,8 +382,8 @@ class HippoRAGImpl(BaseRAG):
             subject_phrase = f[0].lower()
             # predicate_phrase = f[1].lower()
             object_phrase = f[2].lower()
-            phrase_keys.append(compute_mdhash_id(content=subject_phrase, prefix=self._entity_prefix))
-            phrase_keys.append(compute_mdhash_id(content=object_phrase, prefix=self._entity_prefix))
+            phrase_keys.append(compute_mdhash_id(index_name, content=subject_phrase, prefix=self._entity_prefix))
+            phrase_keys.append(compute_mdhash_id(index_name, content=object_phrase, prefix=self._entity_prefix))
         phrase_keys = list(set(phrase_keys))
         nodes = self._graph_vertices_to_nodes(
             await self._graph_store.aselect_vertices(index_name, dict(name_in=phrase_keys))
@@ -394,7 +396,7 @@ class HippoRAGImpl(BaseRAG):
             object_phrase = f[2].lower()
 
             for phrase in [subject_phrase, object_phrase]:
-                phrase_key = compute_mdhash_id(content=phrase, prefix=self._entity_prefix)
+                phrase_key = compute_mdhash_id(index_name, content=phrase, prefix=self._entity_prefix)
 
                 if phrase_key in node_id_to_phrase:
                     phrase_weights[phrase_key] = np.float64(fact_score)
@@ -473,7 +475,7 @@ class HippoRAGImpl(BaseRAG):
         # Step 2: 生成 top-k 短语的 ID（如 "entity-<md5>"）
         top_k_phrases = set(linking_score_map.keys())
         top_k_phrase_ids = set(
-            [compute_mdhash_id(content=phrase, prefix=self._entity_prefix) for phrase in top_k_phrases]
+            [compute_mdhash_id(index_name, content=phrase, prefix=self._entity_prefix) for phrase in top_k_phrases]
         )
 
         # Step 3: 查询图中实际存在的短语 ID
@@ -605,13 +607,15 @@ class HippoRAGImpl(BaseRAG):
                     entities, _ = self._extract_entity_nodes([triple_tuple])
                     # Process entities for potential deletion
                     for entity in entities:
-                        entity_id = compute_mdhash_id(content=entity, prefix=self._entity_prefix)
+                        entity_id = compute_mdhash_id(index_name, content=entity, prefix=self._entity_prefix)
                         entity_docs = set(await self._db.get_ent_node_to_chunk_ids(index_name, entity_id) or [])
                         # Only delete entities that are exclusively used by documents being deleted
                         if entity_docs and not entity_docs.difference(set(docs_to_delete)):
                             entities_to_delete.append(entity_id)
                     # Mark triple for deletion
-                    triples_to_delete.append(compute_mdhash_id(content=str(triple_tuple), prefix=self._fact_prefix))
+                    triples_to_delete.append(
+                        compute_mdhash_id(index_name, content=str(triple_tuple), prefix=self._fact_prefix)
+                    )
         embedding_ids_to_delete = triples_to_delete + entities_to_delete + list(chunk_ids_triple_to_delete.keys())
         logger.warning(f"Delete {len(embedding_ids_to_delete)} embeddings: {embedding_ids_to_delete}")
         if len(embedding_ids_to_delete) > 0:
@@ -762,7 +766,7 @@ class HippoRAGImpl(BaseRAG):
         # graph_nodes, triple_entities = self.extract_graph_nodes(triples)
         nodes_dict = {}
         for node in entity_nodes:
-            hash_id = compute_mdhash_id(str(node), f"{prefix}-")
+            hash_id = compute_mdhash_id(index_name, str(node), f"{prefix}-")
             nodes_dict[hash_id] = {"content": str(node)}
         all_hash_ids = list(nodes_dict.keys())
         logger.debug(f"Adding {entity_nodes} new embeddings to the store with {metadata}.")
@@ -791,7 +795,7 @@ class HippoRAGImpl(BaseRAG):
         return docs
 
     def _add_fact_edges(
-        self, new_docs: List[Document], chunk_triples: Dict[str, List[Tuple[str, str, str]]]
+        self, index_name: str, new_docs: List[Document], chunk_triples: Dict[str, List[Tuple[str, str, str]]]
     ) -> Tuple[Dict[str, List[str]], Dict[Tuple[str, str], float]]:
         """
         Adds edges between entity nodes and chunk nodes in the graph.
@@ -819,8 +823,8 @@ class HippoRAGImpl(BaseRAG):
             chunk_key = doc.uid
             # if chunk_key not in current_graph_nodes:
             for triple in triples:
-                node_key = compute_mdhash_id(content=triple[0], prefix=(self._entity_prefix))
-                node_2_key = compute_mdhash_id(content=triple[2], prefix=(self._entity_prefix))
+                node_key = compute_mdhash_id(index_name, content=triple[0], prefix=(self._entity_prefix))
+                node_2_key = compute_mdhash_id(index_name, content=triple[2], prefix=(self._entity_prefix))
                 node_to_node_stats[(node_key, node_2_key)] = node_to_node_stats.get((node_key, node_2_key), 0.0) + 1
                 node_to_node_stats[(node_2_key, node_key)] = node_to_node_stats.get((node_2_key, node_key), 0.0) + 1
                 entities_in_chunk.add(node_key)
@@ -832,6 +836,7 @@ class HippoRAGImpl(BaseRAG):
 
     def _add_passage_edges(
         self,
+        index_name: str,
         new_docs: List[Document],
         chunk_triples: Dict[str, List[List[str]]],
         node_to_node_stats: Dict[Tuple[str, str], float],
@@ -863,7 +868,7 @@ class HippoRAGImpl(BaseRAG):
             chunk = chunk_triples[doc.uid]
             for chunk_ents in chunk:
                 for chunk_ent in chunk_ents:
-                    node_key = compute_mdhash_id(chunk_ent, prefix=self._entity_prefix)
+                    node_key = compute_mdhash_id(index_name, chunk_ent, prefix=self._entity_prefix)
                     node_to_node_stats[(doc.uid, node_key)] = 1.0
             num_new_chunks += 1
         return num_new_chunks
@@ -988,7 +993,7 @@ class HippoRAGImpl(BaseRAG):
                     source=edge[0],
                     target=edge[1],
                     relation="",
-                    uid=GraphHelper.generate_edge_id(edge[0], "", edge[1]),
+                    uid=GraphHelper.generate_edge_id(index_name, edge[0], "", edge[1]),
                     weight=weight,
                     relation_type=RelationType.RELATION,
                     label=index_name,

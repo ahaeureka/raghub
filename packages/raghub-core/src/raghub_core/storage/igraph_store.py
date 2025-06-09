@@ -737,7 +737,7 @@ class IGraphStore(GraphStorage):
         entities: 查询相关的实体列表
         max_hops: 最大跳数，默认为2
         """
-        uids = [GraphHelper.generate_vertex_id(entity) for entity in entities]
+        uids = [GraphHelper.generate_vertex_id(label, entity) for entity in entities]
         valid_entities = await self.aselect_vertices(label, {"uid_in": uids})
         if not self._graph or label not in self._graph:
             self._create(label)

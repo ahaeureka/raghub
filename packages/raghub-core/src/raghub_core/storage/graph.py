@@ -48,14 +48,6 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
         """
         raise NotImplementedError("Subclasses should implement this method.")
 
-    # @abstractmethod
-    # def edge_seq(self, name: str = "") -> List[str] | Dict[str, List[str]]:
-    #     raise NotImplementedError("Subclasses should implement this method.")
-
-    # @abstractmethod
-    # async def avertices_count(self, label: str) -> int:
-    #     raise NotImplementedError("Subclasses should implement this `vertices_count` method.")
-
     @abstractmethod
     async def apersonalized_pagerank(
         self,
@@ -268,7 +260,7 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
         """
         raise NotImplementedError("Subclasses should implement this method.")
 
-    def transform_logic_operators(self, attr: Dict[str, Any]) -> str:
+    def transform_logic_operators(self, attr: Dict[str, Any], node_or_rel="n") -> str:
         """
         Transform logic operators in the attribute dictionary to Cypher syntax.
 
@@ -324,23 +316,25 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
             if "_" in key:
                 attr_name, operator = key.rsplit("_", 1)
                 if operator == "eq":
-                    conditions.append(f"n.{attr_name} = ${key}")
+                    conditions.append(f"{node_or_rel}.{attr_name} = {value}")
                 elif operator == "ne":
-                    conditions.append(f"n.{attr_name} <> ${key}")
+                    conditions.append(f"{node_or_rel}.{attr_name} <> {value}")
                 elif operator == "lt":
-                    conditions.append(f"n.{attr_name} < ${key}")
+                    conditions.append(f"{node_or_rel}.{attr_name} < {value}")
                 elif operator == "gt":
-                    conditions.append(f"n.{attr_name} > ${key}")
+                    conditions.append(f"{node_or_rel}.{attr_name} > {value}")
                 elif operator == "le":
-                    conditions.append(f"n.{attr_name} <= ${key}")
+                    conditions.append(f"{node_or_rel}.{attr_name} <= {value}")
                 elif operator == "ge":
-                    conditions.append(f"n.{attr_name} >= ${key}")
+                    conditions.append(f"{node_or_rel}.{attr_name} >= {value}")
                 elif operator == "in":
-                    conditions.append(f"n.{attr_name} IN ${key}")
+                    conditions.append(f"{node_or_rel}.{attr_name} IN {value}")
                 elif operator == "notin":
-                    conditions.append(f"n.{attr_name} NOT IN ${key}")
+                    conditions.append(f"{node_or_rel}.{attr_name} NOT IN {value}")
+                else:
+                    conditions.append(f"{node_or_rel}.{attr_name} = {value}")
             else:
-                conditions.append(f"n.{key} = ${key}")
+                conditions.append(f"n.{key} = {value}")
         if len(conditions) == 0:
             return ""
         if len(conditions) == 1:

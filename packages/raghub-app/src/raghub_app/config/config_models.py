@@ -75,6 +75,14 @@ class HippoRAGConfig(BaseParameters):
     )
 
 
+class GraphRAGConfig(BaseParameters):
+    dao_provider: str = BaseParameters.field(
+        default="default_graph_rag_dao",
+        description="DAO provider for GraphRAG",
+        tags=["dao"],
+    )
+
+
 class APPConfig(RAGHubConfig):
     """
     配置类，用于存储应用程序相关的参数和设置.
@@ -99,4 +107,9 @@ class APPConfig(RAGHubConfig):
         default=SearchEngineConfig(),
         description="Search Engine Configuration",
         tags=["search_engine"],
+    )
+    graphrag: GraphRAGConfig = BaseParameters.field(
+        default=GraphRAGConfig(),
+        description="GraphRAG Configuration",
+        tags=["graphrag"],
     )

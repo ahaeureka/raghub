@@ -76,7 +76,7 @@ class HippoRAGLocalStorage(HipporagStorage):
             raise ValueError("Cache is not initialized")
         # Delete the node cache from the cache
         for node_key in node_keys:
-            key = f"{self._cache_prefix}:{label}:node_stats:{compute_mdhash_id(node_key)}:*"
+            key = f"{self._cache_prefix}:{label}:node_stats:{compute_mdhash_id(label, node_key)}:*"
             await self._cache.adelete(key)
 
     async def get_node_to_node_stats(self, label: str, from_node_key: str, to_node_key: str) -> Optional[float]:
@@ -152,8 +152,8 @@ class HippoRAGLocalStorage(HipporagStorage):
 
     def get_node_to_node_stats_cache_key(self, label: str, from_node_key: str, to_node_key: str) -> str:
         return f"""{self._cache_prefix}:{label}:
-        node_stats:{compute_mdhash_id(from_node_key)}:{compute_mdhash_id(to_node_key)}"""
+        node_stats:{compute_mdhash_id(label, from_node_key)}:{compute_mdhash_id(label, to_node_key)}"""
 
     def get_triples_to_docs_cache_key(self, label, triples: Tuple[str, str, str]) -> str:
         key = "_".join(triples)
-        return f"{self._cache_prefix}:{label}:triple:{compute_mdhash_id(key)}"
+        return f"{self._cache_prefix}:{label}:triple:{compute_mdhash_id(label, key)}"

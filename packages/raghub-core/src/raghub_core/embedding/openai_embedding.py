@@ -52,3 +52,11 @@ class OpenAIEmbedding(BaseEmbedding):
         if self.model_name.lower().startswith("bbai") and instruction:
             texts = [instruction + text for text in texts]
         return await self.aencode(texts, instruction)
+
+    def similarity(self, src: str, dst: str) -> float:
+        embeddings = self.encode([src, dst])
+        return self.cosine_similarity(embeddings[0], embeddings[1])
+
+    async def asimilarity(self, src: str, dst: str) -> float:
+        embeddings = await self.aencode([src, dst])
+        return self.cosine_similarity(embeddings[0], embeddings[1])

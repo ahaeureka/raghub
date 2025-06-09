@@ -27,6 +27,8 @@ class GraphRAGDAO(BaseGraphRAGDAO):
     It provides methods to manage graph storage in a RAG system.
     """
 
+    name = "default_graph_rag_dao"
+
     def __init__(
         self,
         embedding_store: VectorStorage,
@@ -73,6 +75,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         """
         # Add documents to the graph storage
         exsiting = await self.embedding_store.get_by_ids(index_name, [doc.uid for doc in documents])
+
         new_docs = {doc.uid: doc.model_dump() for doc in documents}
         if exsiting:
             exsiting_docs = {doc.uid: doc.model_dump() for doc in exsiting}
@@ -102,6 +105,12 @@ class GraphRAGDAO(BaseGraphRAGDAO):
             [v for v in texts if v.uid in [ev.uid for ev in existing_vertices]] if existing_vertices else []
         )
         if filter_existing_vertices:
+            filter_existing_vertices_dict = {v.uid: v for v in filter_existing_vertices}
+            texts_dict = {v.uid: v for v in texts}
+            for uid, vertex in filter_existing_vertices_dict.items():
+                vertex.metadata.update(texts_dict[uid].metadata)
+                vertex.doc_id.extend(texts_dict[uid].doc_id)
+                vertex.description.update(texts_dict[uid].description)
             await self.graph_store.aupdate_vertices(unique_name, filter_existing_vertices)
         if not existing_vertices:
             logger.warning(f"No existing vertices found for index: {unique_name}")
@@ -126,7 +135,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         # search all entities and docs by doc_ids
         tasks = []
         for doc_id in doc_ids if isinstance(doc_ids, list) else [doc_ids]:
-            tasks.append(self.graph_store.asearch_neibors(unique_name, doc_id))
+            tasks.append(self.graph_store.asearch_neibors(doc_id))
         results: List[GraphModel] = await asyncio.gather(*tasks)
         if not results or all(not res for res in results):
             logger.warning(f"No vertices found for doc_ids: {doc_ids} in index: {unique_name}")
@@ -232,6 +241,11 @@ class GraphRAGDAO(BaseGraphRAGDAO):
             [edge for edge in edges if edge.uid in [ee.uid for ee in existing_edges]] if existing_edges else []
         )
         if filter_existing_edges:
+            filter_existing_edges_dict = {edge.uid: edge for edge in filter_existing_edges}
+            edges_dict = {edge.uid: edge for edge in edges}
+            for uid, edge in filter_existing_edges_dict.items():
+                edge.edge_metadata.update(edges_dict[uid].edge_metadata)
+                edge.description.update(edges_dict[uid].description)
             await self.graph_store.aupdate_edges(unique_name, filter_existing_edges)
         if not existing_edges:
             logger.warning(f"No existing edges found for index: {unique_name}")
@@ -378,7 +392,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         Returns:
             GraphModel: The graph model containing the entity and its related information.
         """
-        entities = await self.graph_store.aselect_vertices(index_name, name_in=entity)
+        entities = await self.graph_store.aselect_vertices(index_name, dict(name_in=[entity]))
 
         if not entities:
             return GraphModel(vertices=[], edges=[])
@@ -397,7 +411,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         logger.debug(f"Performing one-hop entity search for entity: {entity} with relations: {relations}")
         return await self.graph_store.multi_hop_search(
             index_name,
-            start_nodes_id=[GraphHelper.generate_vertex_id(entity)],
+            start_nodes_id=[GraphHelper.generate_vertex_id(index_name, entity)],
             rel_type=RelationType.RELATION.value,
             relation_path=relations,
             max_hops=1,
@@ -412,8 +426,8 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         Returns:
             GraphModel: The graph model containing the entities and their relations.
         """
-        source = GraphHelper.generate_vertex_id(entities[0])
-        target = GraphHelper.generate_vertex_id(entities[1])
+        source = GraphHelper.generate_vertex_id(index_name, entities[0])
+        target = GraphHelper.generate_vertex_id(index_name, entities[1])
         edges = await self.graph_store.aselect_edges(
             index_name,
             dict(source=source, target=target),
@@ -432,7 +446,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         Returns:
             GraphModel: The graph model containing the entity and its related information.
         """
-        start_nodes_id = [GraphHelper.generate_vertex_id(entity)]
+        start_nodes_id = [GraphHelper.generate_vertex_id(index_name, entity)]
         return await self.graph_store.multi_hop_search(
             index_name,
             start_nodes_id=start_nodes_id,
@@ -453,13 +467,10 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         return await self.graph_store.freestyle_search(index_name, entities, rel_type=RelationType.RELATION.value)
 
     async def explore_trigraph(self, index_name: str, entities: List[str]) -> GraphModel:
-        # logger.debug(f"Found {similar_entities} similar entities for keywords: {keywords}")
         graph = await self.graph_store.multi_hop_search(index_name, entities, rel_type=RelationType.RELATION.value)
         if not graph:
             None
-        # graph.vertices = [v for v in graph.vertices if v.namespace == Namespace.ENTITY.value]
         return graph
-        # Create a GraphModel from the similar entities
 
     async def get_verteices_by_ids(self, index_name: str, ids: List[str]) -> List[GraphVertex]:
         """
@@ -473,7 +484,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         if not ids:
             logger.warning("No IDs provided for vertex retrieval.")
             return []
-        return await self.graph_store.aselect_vertices(index_name, uid_in=ids)
+        return await self.graph_store.aselect_vertices(index_name, dict(uid_in=ids))
 
     async def save_openie_info(self, unique_name, openie_info: OpenIEInfo):
         pass
@@ -504,7 +515,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         if not entities:
             logger.warning("No entities provided for document retrieval.")
             return []
-        entitiy_ids = [GraphHelper.generate_vertex_id(entity) for entity in entities]
+        entitiy_ids = [GraphHelper.generate_vertex_id(index_name, entity) for entity in entities]
         ents = await self.embedding_store.get_by_ids(self._entities_index.format(index_name), list(set(entitiy_ids)))
         if not ents:
             logger.warning(f"No documents found for entities:{index_name}: {entities}")

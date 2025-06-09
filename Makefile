@@ -30,10 +30,10 @@ testenv: $(VENV)/.testenv
 $(VENV)/.testenv: $(VENV)/bin/activate
 	# check uv version and use appropriate parameters
 	if . $(VENV_BIN)/activate && uv sync --help | grep -q -- "--active"; then \
-		. $(VENV_BIN)/activate && uv sync --active --all-packages --reinstall --no-build-isolation \
+		. $(VENV_BIN)/activate && uv sync --active --all-packages --no-build-isolation --all-extras \
 			--link-mode=copy; \
 	else \
-		. $(VENV_BIN)/activate && uv sync --all-packages --reinstall --no-build-isolation  \
+		. $(VENV_BIN)/activate && uv sync --all-packages --no-build-isolation --all-extras  \
 			--link-mode=copy; \
 	fi
 	cp .devcontainer/project.pth $(VENV)/lib/python3.11/site-packages

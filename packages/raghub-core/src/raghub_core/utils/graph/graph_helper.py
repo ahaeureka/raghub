@@ -54,11 +54,11 @@ class GraphHelper:
         return f"Entities:\n{entities_str}\n\nRelationships:\n{relationships_str}\n\n"
 
     @staticmethod
-    def generate_vertex_id(name: str) -> str:
+    def generate_vertex_id(index_name: str, name: str) -> str:
         """Generate a unique ID for an entity based on its name and description."""
-        return compute_mdhash_id(name, Namespace.ENTITY.value)
+        return compute_mdhash_id(index_name, name, Namespace.ENTITY.value)
 
     @staticmethod
-    def generate_edge_id(source: str, relation: str, target: str) -> str:
+    def generate_edge_id(index_name: str, source: str, relation: str, target: str) -> str:
         """Generate a unique ID for an edge based on source, target and relation type."""
-        return compute_mdhash_id(f"{source}#{relation}#{target}", Namespace.FACT.value)
+        return compute_mdhash_id(index_name, f"{source}#{relation}#{target}", Namespace.FACT.value)

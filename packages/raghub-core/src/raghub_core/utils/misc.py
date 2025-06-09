@@ -6,7 +6,7 @@ from raghub_core.schemas.document import Document
 from sqlmodel import SQLModel
 
 
-def compute_mdhash_id(content: str, prefix: str = "") -> str:
+def compute_mdhash_id(index: str, content: str, prefix: str = "") -> str:
     """
     Compute the MD5 hash of the given content string and optionally prepend a prefix.
 
@@ -17,10 +17,21 @@ def compute_mdhash_id(content: str, prefix: str = "") -> str:
     Returns:
         str: A string consisting of the prefix followed by the hexadecimal representation of the MD5 hash.
     """
+
+    index_suffix = ["_context_history", "_entities", "_docs", "_communities"]
+    if index.endswith(tuple(index_suffix)):
+        index = (
+            index.removesuffix("_context_history")
+            .removesuffix("_entities")
+            .removesuffix("_docs")
+            .removesuffix("_communities")
+        )
     if prefix.endswith("-"):
         prefix = prefix.removesuffix("-")  # Remove trailing hyphen if present
     if not prefix:
         return md5(content.encode()).hexdigest()
+    content = content.strip()  # Ensure content is stripped of leading/trailing whitespace
+    content = f"{index}${content}"  # Prepend index to content for uniqueness
     return f"{prefix}-{md5(content.encode()).hexdigest()}"
 
 

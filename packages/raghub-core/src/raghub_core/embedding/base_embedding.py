@@ -45,3 +45,23 @@ class BaseEmbedding(metaclass=SingletonRegisterMeta):
         Initialize the embedding model. This method should be called before using the model.
         """
         pass
+
+    def similarity(self, src: str, dst: str) -> float:
+        embeddings = self.encode([src, dst])
+        return self.cosine_similarity(embeddings[0], embeddings[1])
+
+    async def asimilarity(self, src: str, dst: str) -> float:
+        embeddings = await self.aencode([src, dst])
+        return self.cosine_similarity(embeddings[0], embeddings[1])
+
+    def cosine_similarity(self, src: np.ndarray, dst: np.ndarray) -> float:
+        # 计算点积
+        dot_product = np.dot(src, dst)
+        # 计算 L2 范数
+        norm_src = np.linalg.norm(src)
+        norm_dst = np.linalg.norm(dst)
+        # 处理分母为零的情况（避免数值错误）
+        if norm_src == 0 or norm_dst == 0:
+            return 0.0
+        # 返回余弦相似度
+        return dot_product / (norm_src * norm_dst)
