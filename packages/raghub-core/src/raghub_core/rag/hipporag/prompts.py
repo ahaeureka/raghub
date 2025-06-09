@@ -57,14 +57,14 @@ class DSPyRerankPrompt(BasePrompt):
             DSPyFilterPromptModel(
                 system_message=system_prompt,
                 user_message="""[[ ## question ## ]]\n{question}\n\n[[ ## fact_before_filter ## ]]\n{fact_before_filter}\n\n[[ ## completed ## ]]""",  # noqa: E501
-                example_output="""[[ ## fact_after_filter ## ]]\n{fact_after_filter}\n\n[[ ## completed ## ]]""",
+                output_example="""[[ ## fact_after_filter ## ]]\n{fact_after_filter}\n\n[[ ## completed ## ]]""",
                 language="en",
             ),
             DSPyFilterPromptModel(
                 language="zh",
                 system_message=system_prompt,
                 user_message="""[[ ## question ## ]]\n{question}\n\n[[ ## fact_before_filter ## ]]\n{fact_before_filter}\n\n[[ ## completed ## ]]""",  # noqa: E501
-                example_output="""[[ ## fact_after_filter ## ]]\n{fact_after_filter}\n\n[[ ## completed ## ]]""",
+                output_example="""[[ ## fact_after_filter ## ]]\n{fact_after_filter}\n\n[[ ## completed ## ]]""",
             ),
         ]
         self._prompts = {prompt.language: prompt for prompt in prompts}
@@ -76,7 +76,7 @@ class DSPyRerankPrompt(BasePrompt):
         system_message = SystemMessagePromptTemplate.from_template(prompt.system_message)
         human_message = HumanMessagePromptTemplate.from_template(prompt.user_message)
         ai_message = AIMessagePromptTemplate.from_template(
-            prompt.example_output
+            prompt.output_example
         )  # Assuming you have an AI message template
         messages = []
         for demo in self.dspy_saved["prog"]["demos"]:

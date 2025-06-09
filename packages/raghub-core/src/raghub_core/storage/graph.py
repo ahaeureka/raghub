@@ -340,3 +340,29 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
         if len(conditions) == 1:
             return conditions[0]
         return " AND ".join(conditions)
+
+    def update_graph_attr(
+        self, ev: Dict[str, GraphEdge | GraphVertex], existing_ev: Dict[str, GraphEdge | GraphVertex]
+    ) -> List[Dict[str, Any]]:
+        """
+        Update the edge attributes with the GraphEdge | GraphVertex attributes.
+        """
+        keys = set(ev.keys()).intersection(existing_ev.keys())
+        ready_updated = []
+        for key in keys:
+            existing = existing_ev[key]
+            new = ev[key]
+            existing_dict = existing.model_dump()
+            for attr, value in new.model_dump().items():
+                if attr not in existing.model_dump():
+                    existing_dict[attr] = value
+                elif isinstance(existing_dict[attr], list) and isinstance(value, list):
+                    existing_list = existing_dict[attr]
+                    existing_list.extend(value)
+                    existing_dict[attr] = existing_list
+                elif isinstance(existing_dict[attr], dict) and isinstance(value, dict):
+                    existing_dict[attr].update(value)
+                else:
+                    existing_dict[attr] = value
+            ready_updated.append(existing_dict)
+        return ready_updated

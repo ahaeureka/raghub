@@ -125,6 +125,7 @@ class HippoRAGImpl(BaseRAG):
         doc.metadata["entities"] = [
             compute_mdhash_id(index_name, str(node), self._entity_prefix) for node in graph_nodes
         ]
+        logger.debug(f"Extracted {ie.triples} triples from the document.")
         doc.metadata["facts"] = [compute_mdhash_id(index_name, str(fact), self._fact_prefix) for fact in ie.triples]
         facts = self._flatten_facts([ie.triples])
         facts_str.extend([str(fact) for fact in facts])
@@ -134,7 +135,9 @@ class HippoRAGImpl(BaseRAG):
             index_name, entities_str, self._entity_prefix, metadata={"namespace": Namespace.ENTITY.value}
         )
         logger.info(f"Added {len(embed_entities)} entities to the embedding store.")
-        await self.add_embeddings(index_name, facts_str, self._fact_prefix, metadata={"namespace": "fact"})
+        await self.add_embeddings(
+            index_name, facts_str, self._fact_prefix, metadata={"namespace": Namespace.FACT.value}
+        )
 
         await self._db.save_openie_info(index_name, openie_infos)
         docs = await self._embedd_store.add_documents(index_name, [doc])
@@ -307,7 +310,6 @@ class HippoRAGImpl(BaseRAG):
 
         sorted_candidate_items: List[Tuple[Document, float]] = [docs[i] for i in result_indices]
         top_k_facts = sorted_candidate_items[:link_top_k]
-        logger.debug(f"rerank_facts Top {link_top_k} facts: {sorted_candidate_items}")
         # rerank_log = {"facts_before_rerank": candidate_facts, "facts_after_rerank": top_k_facts}
 
         return top_k_facts
@@ -444,6 +446,7 @@ class HippoRAGImpl(BaseRAG):
         ppr_sorted_doc_scores = await self.run_ppr(
             index_name, {k: v.astype(float) for k, v in node_weights.items()}, damping=damping, top_k=top_k
         )
+        logger.debug(f"Graph search with fact entities completed. PPR scores: {ppr_sorted_doc_scores}")
 
         return ppr_sorted_doc_scores
 
@@ -488,8 +491,9 @@ class HippoRAGImpl(BaseRAG):
         for phrase_id in all_phrase_weights:
             if phrase_id not in top_k_phrase_ids_in_graph:
                 all_phrase_weights[phrase_id] = np.float64(0.0)
-
         # Step 5: 验证过滤后非零权重数量是否等于 link_top_k
+        logger.debug(f"Filtered phrase weights: {all_phrase_weights}")
+        logger.debug(f"Linking score map: {linking_score_map}")
         assert sum(1 for w in all_phrase_weights.values() if w != 0.0) == len(linking_score_map), (
             "Filtered phrase weights do not match the number of top-k phrases."
         )
@@ -659,6 +663,7 @@ class HippoRAGImpl(BaseRAG):
             top_k=top_k * 2,  # Ensure top_k is passed correctly here
         )
         # filter doc- prefix
+        logger.debug(f"Pagerank scores: {pagerank_scores}")
         filtered_dict = {k: v for k, v in pagerank_scores.items() if k.startswith(self._doc_prefix)}
         return filtered_dict
 
@@ -697,6 +702,7 @@ class HippoRAGImpl(BaseRAG):
         It ensures that all necessary components are properly initialized and ready for use.
         """
         self._embedder.init()
+        logger.debug(f"Initializing graph and embedding stores:{self._db}...")
         await self._db.init()
         await self._embedd_store.init()
         await self._graph_store.init()
@@ -969,7 +975,7 @@ class HippoRAGImpl(BaseRAG):
             node["name"] = node_id
             new_nodes.append(node)
         if len(new_nodes) > 0:
-            logger.debug(f"Adding {new_nodes} new nodes to the graph.")
+            # logger.debug(f"Adding {new_nodes} new nodes to the graph.")
             # new_vertices = self._vertices_nodes_to_graph_vertices(index_name, new_nodes)
             await self._graph_store.aupsert_virtices(
                 index_name, self._vertices_nodes_to_graph_vertices(index_name, new_nodes)
@@ -1019,10 +1025,10 @@ class HippoRAGImpl(BaseRAG):
                 uid=vertex["uid"],
                 name=vertex["name"],
                 namespace=vertex.get("metadata", {}).get("namespace", ""),
-                content=vertex["content"],
+                content=str(vertex["content"]) if not isinstance(vertex["content"], str) else vertex["content"],
                 metadata=vertex.get("metadata", {}),
                 embedding=vertex.get("embedding", None),
-                doc_id=[vertex.get("metadata", {}).get("doc_id", None)],
+                doc_id=vertex.get("metadata", {}).get("doc_id", []),
             )
             graph_vertices.append(v)
         return graph_vertices
@@ -1044,9 +1050,10 @@ class HippoRAGImpl(BaseRAG):
             node = {
                 "uid": vertex.uid,
                 "name": vertex.name,
-                "content": vertex.content,
+                "content": str(vertex.content) if not isinstance(vertex.content, str) else vertex.content,
                 "embedding": vertex.embedding,
                 "metadata": vertex.metadata,
+                "description": vertex.description or {},
             }
             if vertex.namespace:
                 node["metadata"]["namespace"] = vertex.namespace

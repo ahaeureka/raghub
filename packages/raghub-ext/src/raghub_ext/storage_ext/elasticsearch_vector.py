@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from langchain_core.embeddings import Embeddings
+from langchain_core.runnables.config import run_in_executor
 from langchain_core.vectorstores import VectorStore
 from loguru import logger
 from pydantic import BaseModel
@@ -69,9 +70,12 @@ class ElasticsearchVectorStorage(VectorStorage):
                     verify_certs=self._verify_certs,
                     http_auth=self._http_auth,
                 )
-            if not await self._async_client.ping():
-                raise ConnectionError("Elasticsearch connection failed.")
-            logger.debug("ElasticsearchVectorStorage successfully initialized.")
+            # try:
+            #     if not await self._async_client.ping():
+            #         raise ConnectionError("Elasticsearch connection failed.")
+            # finally:
+            #     await self._async_client.close()  # Mandatory cleanup
+            # logger.debug("ElasticsearchVectorStorage successfully initialized.")
         except Exception as e:
             logger.error(f"Failed to initialize Elasticsearch vector store: {e}")
             raise
@@ -140,6 +144,9 @@ class ElasticsearchVectorStorage(VectorStorage):
         """
         if not self._async_client:
             raise ValueError("Elasticsearch client is not initialized.")
+        if not ids:
+            logger.warning("No IDs provided for fetching documents.")
+            return []
         body = {"docs": [{"_index": f"{self._index_name_prefix}_{index_name}", "_id": doc_id} for doc_id in ids]}
         response = await self._async_client.mget(body=body)
         docs: List[Document] = []  # noqa: F811
@@ -243,8 +250,13 @@ class ElasticsearchVectorStorage(VectorStorage):
 
         if filter:
             bool_query = self._build_metadata_query(filter)
-        results = await self._es_store_for_index(index_name).asimilarity_search_by_vector_with_relevance_scores(  # type: ignore[attr-defined]
-            embedding=embedding, k=k, filter=[bool_query], doc_builder=_doc_builder
+        results = await run_in_executor(
+            None,
+            self._es_store_for_index(index_name).similarity_search_by_vector_with_relevance_scores,  # type: ignore[attr-defined]
+            embedding=embedding,
+            k=k,
+            filter=[bool_query],
+            doc_builder=_doc_builder,
         )
         return [(doc, score) for doc, score in results]
 

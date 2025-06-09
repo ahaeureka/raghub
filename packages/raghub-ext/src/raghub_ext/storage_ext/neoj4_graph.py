@@ -239,26 +239,21 @@ class Neo4jGraphStorage(GraphStorage):
         try:
             # Check if graph exists
             async with self._driver.session() as session:
+                graph_name = f"{label}_ppr_graph"
                 result = await session.run(
-                    "CALL gds.graph.list() YIELD graphName RETURN graphName",
+                    f"CALL gds.graph.drop('{graph_name}', false)",
                 )
-                existing_graphs = [record["graphName"] async for record in result]
-                graph_name = f"{label}Graph"
-
-                if graph_name not in existing_graphs:
-                    logger.info(f"Graph '{graph_name}' does not exist. Creating...")
-                    create_graph_query = f"""
-                    CALL gds.graph.project(
-                        '{graph_name}',
-                        '{label}',
-                        'RELATED_TO',
-                        {{
-                            relationshipProperties: 'weight'
-                        }}
-                    )
-                    """
-                    await session.run(create_graph_query)
-                    logger.info(f"Graph '{graph_name}' created successfully.")
+                create_graph_query = f"""
+                MATCH (source:{label})-[r]->(target:{label})
+                RETURN gds.graph.project(
+                $graph_name,
+                  source,
+                  target,
+                {{ relationshipProperties: r {{ .weight }} }},
+                {{ undirectedRelationshipTypes: ['*'] }}
+                )"""
+                await session.run(create_graph_query, graph_name=graph_name)
+                logger.info(f"Graph '{graph_name}' created successfully.")
 
                 query = f"""
                 UNWIND $pairs AS pair
@@ -277,7 +272,7 @@ class Neo4jGraphStorage(GraphStorage):
                 ORDER BY score DESC, name ASC
                 LIMIT $topK
                 """
-
+                logger.debug(f"Running personalized PageRank vertices_with_weight: {vertices_with_weight}")
                 result = await session.run(
                     query,
                     pairs=[{"name": name, "weight": value} for name, value in vertices_with_weight.items()],
@@ -336,11 +331,7 @@ class Neo4jGraphStorage(GraphStorage):
                     MATCH ()-[r]->()
                     WHERE r.uid = $edge.uid
                     SET r.weight = $edge.weight,
-                        r.source_content = $edge.source_content,
-                        r.target_content = $edge.target_content,
-                        r.relation = $edge.relation,
                         r.description = $edge.description,
-                        r.relation_type= $edge.relation_type,
                         r.metadata = $edge.edge_metadata,
                         r.label = $edge.label_param
 
@@ -366,9 +357,27 @@ class Neo4jGraphStorage(GraphStorage):
 
     async def aupsert_virtices(self, unique_name: str, vertices: List[GraphVertex]) -> List[GraphVertex]:
         """Upsert vertices in the graph."""
-        # For Neo4j, this is the same as aadd_vertices since we use MERGE
-        await self.aadd_vertices(unique_name, vertices)
-        return vertices
+        existing_vertices: List[GraphVertex] = await self.aselect_vertices(
+            unique_name, dict(uid_in=[v.uid for v in vertices])
+        )
+        ready_updated_vertices = (
+            [v for v in vertices if v.uid in [ev.uid for ev in existing_vertices]] if existing_vertices else []
+        )
+        if ready_updated_vertices:
+            ready_updated_vertices_dict = {v.uid: v for v in ready_updated_vertices}
+            existing_dict = {v.uid: v for v in existing_vertices}
+            updated_dicts = self.update_graph_attr(ready_updated_vertices_dict, existing_dict)
+            await self.aupdate_vertices(unique_name, [GraphVertex(**v) for v in updated_dicts])
+        if not existing_vertices:
+            logger.warning(f"No existing vertices found for index: {unique_name} by uids: {[v.uid for v in vertices]}")
+            return await self.aadd_graph_vertices(unique_name, vertices)
+        # Filter out existing vertices
+        new_vertices = [v for v in vertices if v.uid not in [ev.uid for ev in existing_vertices]]
+        if not new_vertices:
+            logger.warning(f"No new vertices to add for index: {unique_name}")
+            return existing_vertices
+        # upsert existing vertices
+        return await self.aadd_graph_vertices(unique_name, new_vertices)
 
     async def aupsert_edges(self, unique_name: str, edges: List[GraphEdge]) -> List[GraphEdge]:
         """Upsert edges in the graph."""
@@ -376,60 +385,79 @@ class Neo4jGraphStorage(GraphStorage):
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
 
         try:
-            async with self._driver.session() as session:
-                for edge in edges:
-                    relation_type = edge.relation_type.value
-                    query = f"""
-                // 首先尝试找到具有相同uid的现有关系
-                OPTIONAL MATCH ()-[existing_r:`{relation_type}`]->() 
-                WHERE existing_r.uid = $uid
-                
-                // 获取源节点和目标节点
-                MATCH (a:{unique_name} {{uid: $source}}), (b:{unique_name} {{uid: $target}})
-                
-                // 如果找到现有关系，更新它
-                FOREACH (r IN CASE WHEN existing_r IS NOT NULL THEN [existing_r] ELSE [] END |
-                    SET r.weight = $weight,
-                        r.source_content = $source_content,
-                        r.target_content = $target_content,
-                        r.relation = $relation,
-                        r.description = $description,
-                        r.metadata = $edge_metadata,
-                        r.label = $label_param
-                )
-                
-                // 如果没有找到现有关系，创建新的
-                FOREACH (ignore IN CASE WHEN existing_r IS NULL THEN [1] ELSE [] END |
-                    CREATE (a)-[r:`{relation_type}`]->(b)
-                    SET r.weight = $weight,
-                        r.source_content = $source_content,
-                        r.target_content = $target_content,
-                        r.relation = $relation,
-                        r.description = $description,
-                        r.metadata = $edge_metadata,
-                        r.uid = $uid,
-                        r.label = $label_param
-                )
-                
-                RETURN CASE WHEN existing_r IS NOT NULL THEN 'updated' ELSE 'created' END as action
-                """
+            existing_edges: List[GraphEdge] = await self.aselect_edges(unique_name, dict(uid_in=[v.uid for v in edges]))
+            ready_updated_vertices = (
+                [v for v in edges if v.uid in [ev.uid for ev in existing_edges]] if existing_edges else []
+            )
+            if ready_updated_vertices:
+                ready_updated_vertices_dict = {v.uid: v for v in ready_updated_vertices}
+                existing_dict = {v.uid: v for v in existing_edges}
+                updated_dicts = self.update_graph_attr(ready_updated_vertices_dict, existing_dict)
+                await self.aupdate_edges(unique_name, [GraphEdge(**v) for v in updated_dicts])
+            if not existing_edges:
+                logger.warning(f"No existing vertices found for index: {unique_name}")
+                return await self.aadd_graph_edges(unique_name, edges)
+            # Filter out existing vertices
+            new_edges = [v for v in edges if v.uid not in [ev.uid for ev in existing_edges]]
+            if not new_edges:
+                logger.warning(f"No new vertices to add for index: {unique_name}")
+                return existing_edges
+            # upsert existing vertices
+            return await self.aadd_graph_edges(unique_name, new_edges)
+            # async with self._driver.session() as session:
+            #     for edge in edges:
+            #         relation_type = edge.relation_type.value
+            #         query = f"""
+            #     // 首先尝试找到具有相同uid的现有关系
+            #     OPTIONAL MATCH ()-[existing_r:`{relation_type}`]->()
+            #     WHERE existing_r.uid = $uid
 
-                    ret = await session.run(
-                        query,
-                        source=edge.source,
-                        target=edge.target,
-                        weight=edge.weight,
-                        source_content=edge.source_content,
-                        target_content=edge.target_content,
-                        relation=edge.relation,
-                        description=edge.description,
-                        edge_metadata=edge.edge_metadata,
-                        uid=edge.uid,
-                        label_param=edge.label,
-                    )
+            #     // 获取源节点和目标节点
+            #     MATCH (a:{unique_name} {{uid: $source}}), (b:{unique_name} {{uid: $target}})
 
-                logger.info(f"Upserted {[dict(r) async for r in ret]} edges")
-                return edges
+            #     // 如果找到现有关系，更新它
+            #     FOREACH (r IN CASE WHEN existing_r IS NOT NULL THEN [existing_r] ELSE [] END |
+            #         SET r.weight = $weight,
+            #             r.source_content = $source_content,
+            #             r.target_content = $target_content,
+            #             r.relation = $relation,
+            #             r.description = $description,
+            #             r.metadata = $edge_metadata,
+            #             r.label = $label_param
+            #     )
+
+            #     // 如果没有找到现有关系，创建新的
+            #     FOREACH (ignore IN CASE WHEN existing_r IS NULL THEN [1] ELSE [] END |
+            #         CREATE (a)-[r:`{relation_type}`]->(b)
+            #         SET r.weight = $weight,
+            #             r.source_content = $source_content,
+            #             r.target_content = $target_content,
+            #             r.relation = $relation,
+            #             r.description = $description,
+            #             r.metadata = $edge_metadata,
+            #             r.uid = $uid,
+            #             r.label = $label_param
+            #     )
+
+            #     RETURN CASE WHEN existing_r IS NOT NULL THEN 'updated' ELSE 'created' END as action
+            #     """
+
+            #         ret = await session.run(
+            #             query,
+            #             source=edge.source,
+            #             target=edge.target,
+            #             weight=edge.weight,
+            #             source_content=edge.source_content,
+            #             target_content=edge.target_content,
+            #             relation=edge.relation,
+            #             description=edge.description,
+            #             edge_metadata=edge.edge_metadata,
+            #             uid=edge.uid,
+            #             label_param=edge.label,
+            #         )
+
+            #     logger.info(f"Upserted {[dict(r) async for r in ret]} edges")
+            #     return edges
         except Exception as e:
             logger.error(f"Error upserting edges: {e}")
             raise

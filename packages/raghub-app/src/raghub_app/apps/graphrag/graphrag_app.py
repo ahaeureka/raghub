@@ -1,7 +1,6 @@
 from typing import Dict, List
 
 import numpy as np
-from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
 from raghub_core.embedding.base_embedding import BaseEmbedding
 from raghub_core.rag.base_rag import BaseGraphRAGDAO
@@ -43,7 +42,6 @@ class GraphRAG(BaseApp):
             api_key=config.rag.embbeding.api_key,
             n_dims=config.rag.embbeding.n_dims,
         )
-        logger.debug(f"Using embedder: {self._embedder.name} with model: {self._embedder.model_name}")
         embbeddr_store_config = config.vector_storage.model_dump()
         embbeddr_store_config.update(config.search_engine.model_dump())
         self._embedd_store: VectorStorage = ClassFactory.get_instance(

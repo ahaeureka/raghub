@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
@@ -93,11 +93,11 @@ class HippoRAG(BaseApp):
             lang : str
                 The language of the documents. Defaults to "en".
         """
-        return await self.hipporag.add_documents(unique_name, texts, lang=lang)
+        return await self.hipporag.add_documents(unique_name, texts)
 
     async def retrieve(
         self, unique_name: str, queries: List[str], retrieve_top_k=10, lang="en"
-    ) -> List[RetrieveResultItem]:
+    ) -> Dict[str, List[RetrieveResultItem]]:
         """
         Retrieves documents based on the provided queries using a combination of dense
         passage retrieval and graph search.
@@ -113,8 +113,8 @@ class HippoRAG(BaseApp):
             link_top_k : int, optional
                 The number of top facts to consider for graph search. Defaults to 5.
         Returns:
-            List[RetrieveResultItem]
-                A list of RetrieveResultItem objects containing the retrieved documents and their corresponding scores.
+            Dict[str, List[RetrieveResultItem]]
+            A dictionary where keys are query strings and values are lists of RetrieveResultItem objects,
         """
         return await self.hipporag.retrieve(
             unique_name,

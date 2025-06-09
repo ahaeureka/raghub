@@ -72,9 +72,9 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
         }
         await self._search_engine.create_index(label, index_mapping=index_body)
 
-    def init(self):
-        super().init()
-        self._search_engine.init()
+    async def init(self):
+        await super().init()
+        await self._search_engine.init()
 
     def _openie_to_elastic_model(self, openie_info: OpenIEInfo) -> OpenIEInfo:
         """

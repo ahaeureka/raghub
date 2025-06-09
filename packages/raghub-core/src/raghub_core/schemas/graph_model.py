@@ -39,13 +39,13 @@ class GraphVertex(BaseModel):
     """
 
     name: str = Field(..., description="The name of the vertex.")
-    description: Optional[Dict[str, str]] = Field(default=[], description="A summary of the vertex.")
+    description: Optional[Dict[str, str]] = Field(default={}, description="A summary of the vertex.")
     metadata: Dict[str, Any] = Field(default={}, description="The metadata associated with the vertex.")
     uid: str = Field(..., description="The unique identifier for the vertex.")
     content: str = Field(..., description="The content of the vertex.")
     embedding: Optional[List[float]] = Field(default=None, description="The embedding of the vertex.")
     doc_id: Optional[List[str]] = Field(default=None, description="The document ID associated with the vertex.")
-    namespace: Optional[Literal["entity", "doc", "fact"]] = Field(
+    namespace: Optional[Literal["entity", "doc", "fact", "passage"]] = Field(
         default=None, description="The namespace of the vertex."
     )
     label: Optional[str] = Field(default=None, description="The label of the vertex, if applicable.")
@@ -68,12 +68,12 @@ class GraphEdge(SQLModel):
     __tablename__ = "graph_edge"
     source: str = Field(..., description="The source vertex ID.")
     target: str = Field(..., description="The target vertex ID.")
-    source_content: str = Field(..., description="The content of the source vertex.")
-    target_content: str = Field(..., description="The content of the target vertex.")
+    source_content: Optional[str] = Field(default="", description="The content of the source vertex.")
+    target_content: Optional[str] = Field(default="", description="The content of the target vertex.")
     weight: float = Field(..., description="The weight of the edge.")
     relation_type: RelationType = Field(..., description="The relation type of the edge.")
-    relation: Optional[str] = Field(default=None, description="The relation of the edge, if applicable.")
-    description: Optional[Dict[str, str]] = Field(default="", description="A summary of the edge.")
+    relation: Optional[str] = Field(default="", description="The relation of the edge, if applicable.")
+    description: Optional[Dict[str, str]] = Field(default={}, description="A summary of the edge.")
     edge_metadata: Dict[str, Any] = Field(
         default={}, alias="metadata", description="The metadata associated with the edge."
     )
