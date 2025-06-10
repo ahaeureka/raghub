@@ -62,10 +62,10 @@ class Neo4jGraphStorage(GraphStorage):
                 edges_by_type = defaultdict(list)
 
                 for edge in edges:
-                    relation_type = edge.relation_type
+                    relation_type = edge.relation_type.value
                     # 确保关系类型在枚举中定义
                     if relation_type in [rt.value for rt in RelationType]:
-                        edges_by_type[relation_type.value].append(edge)
+                        edges_by_type[relation_type].append(edge)
                     else:
                         # 默认使用 RELATED 类型
                         edges_by_type[RelationType.RELATION.value].append(edge)
@@ -404,60 +404,7 @@ class Neo4jGraphStorage(GraphStorage):
                 return existing_edges
             # upsert existing vertices
             return await self.aadd_graph_edges(unique_name, new_edges)
-            # async with self._driver.session() as session:
-            #     for edge in edges:
-            #         relation_type = edge.relation_type.value
-            #         query = f"""
-            #     // 首先尝试找到具有相同uid的现有关系
-            #     OPTIONAL MATCH ()-[existing_r:`{relation_type}`]->()
-            #     WHERE existing_r.uid = $uid
 
-            #     // 获取源节点和目标节点
-            #     MATCH (a:{unique_name} {{uid: $source}}), (b:{unique_name} {{uid: $target}})
-
-            #     // 如果找到现有关系，更新它
-            #     FOREACH (r IN CASE WHEN existing_r IS NOT NULL THEN [existing_r] ELSE [] END |
-            #         SET r.weight = $weight,
-            #             r.source_content = $source_content,
-            #             r.target_content = $target_content,
-            #             r.relation = $relation,
-            #             r.description = $description,
-            #             r.metadata = $edge_metadata,
-            #             r.label = $label_param
-            #     )
-
-            #     // 如果没有找到现有关系，创建新的
-            #     FOREACH (ignore IN CASE WHEN existing_r IS NULL THEN [1] ELSE [] END |
-            #         CREATE (a)-[r:`{relation_type}`]->(b)
-            #         SET r.weight = $weight,
-            #             r.source_content = $source_content,
-            #             r.target_content = $target_content,
-            #             r.relation = $relation,
-            #             r.description = $description,
-            #             r.metadata = $edge_metadata,
-            #             r.uid = $uid,
-            #             r.label = $label_param
-            #     )
-
-            #     RETURN CASE WHEN existing_r IS NOT NULL THEN 'updated' ELSE 'created' END as action
-            #     """
-
-            #         ret = await session.run(
-            #             query,
-            #             source=edge.source,
-            #             target=edge.target,
-            #             weight=edge.weight,
-            #             source_content=edge.source_content,
-            #             target_content=edge.target_content,
-            #             relation=edge.relation,
-            #             description=edge.description,
-            #             edge_metadata=edge.edge_metadata,
-            #             uid=edge.uid,
-            #             label_param=edge.label,
-            #         )
-
-            #     logger.info(f"Upserted {[dict(r) async for r in ret]} edges")
-            #     return edges
         except Exception as e:
             logger.error(f"Error upserting edges: {e}")
             raise
