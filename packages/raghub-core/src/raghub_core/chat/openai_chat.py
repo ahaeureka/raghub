@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional, TypeVar
+from typing import Any, AsyncIterator, Callable, Dict, Optional, TypeVar
 
 import tenacity
 from langchain.prompts import (
@@ -55,6 +55,9 @@ class OpenAIProxyChat(BaseChat):
         # 如果提供了 output_parser，添加到链中
         if output_parser is not None:
             chain = chain | RunnableLambda(output_parser)
+        else:
+            # 默认输出解析器
+            chain = chain | RunnableLambda(self.default_output_parser)
         return chain
 
     @tenacity.retry(
@@ -90,6 +93,18 @@ class OpenAIProxyChat(BaseChat):
         # 执行链并返回结果
         input = self.preprocess_input(input)
         return await chain.ainvoke(input)
+
+    async def astream(
+        self,
+        prompt: ChatPromptTemplate,
+        input: Dict[str, str],
+        output_parser: Optional[Callable[[AIMessage], ChatResponse]] = None,
+    ) -> AsyncIterator[ChatResponse]:
+        chain = self._build_chain(prompt, output_parser)
+        # 执行链并返回结果
+        input = self.preprocess_input(input)
+        async for ans in chain.astream(input):
+            yield ans
 
     def preprocess_input(self, input: Dict[str, str]) -> Dict[str, str]:
         """

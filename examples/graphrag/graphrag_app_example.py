@@ -28,17 +28,16 @@ async def main():
 李娜的丈夫王磊是硅谷知名投资人，曾向斯坦福大学捐赠200万美元用于建设新实验室。该实验室将于2025年1月正式启用，配备最先进的量子计算设备
 """  # noqa: E501
     ]
-    docs = await impl.add_documents(
-        unique_name, [Document(content=doc, uid=compute_mdhash_id(unique_name, doc, "doc")) for doc in docs], "zh"
-    )
+    # docs = await impl.add_documents(
+    #     unique_name, [Document(content=doc, uid=compute_mdhash_id(unique_name, doc, "doc")) for doc in docs], "zh"
+    # )
     queries = [
         "请详细说明张伟博士在2020年加入斯坦福大学后参与的主要研究项目?",
         # "How did Cinderella reach her happy ending?",
         "What county is Erik Hort's birthplace a part of?",
     ]
-    retrieve_docs = await impl.retrieve(unique_name, queries=queries)
-    for doc in retrieve_docs:
-        print(doc.query, doc.document.content, doc.score)
+    async for ans in impl.QA(unique_name, queries[0], retrieve_top_k=5, lang="zh"):
+        print(ans.answer)
     # await impl.delete(unique_name, [doc.uid for doc in docs])
 
 

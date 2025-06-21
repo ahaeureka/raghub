@@ -1,0 +1,115 @@
+{
+    "ChatMessage": {
+        "role": "Role of the message, e.g., user, assistant, system",
+        "content": "Content of the message",
+        "name": "Name of the message sender, if applicable"
+    },
+    "RetrievalSetting": {
+        "top_k": "Maximum number of retrieved results",
+        "score_threshold": "The score limit of relevance of the result to the query, scope: 0~1"
+    },
+    "CreateChatCompletionRequest": {
+        "model": "The model to use for chat completion",
+        "messages": "List of messages in the chat conversation",
+        "max_tokens": "Maximum number of tokens to generate in the response",
+        "temperature": "Sampling temperature for response generation",
+        "metadata": "Additional options for the chat completion request",
+        "user": "Identifier for the user making the request",
+        "stream": "Whether to stream the response back",
+        "response_format": "Format of the response, e.g., json, text",
+        "knowledge_id": "Knowledge base ID to use for the chat completion",
+        "retrieval_setting": "Knowledge base retrieval settings"
+    },
+    "ChatCompletionChoice": {
+        "index": "Index of the choice in the response",
+        "message": "The message generated as part of the choice",
+        "finish_reason": "Reason for finishing the generation, e.g., stop, length"
+    },
+    "ChatCompletionUsage": {
+        "prompt_tokens": "Number of tokens in the prompt",
+        "completion_tokens": "Number of tokens in the completion",
+        "total_tokens": "Total number of tokens used in the request"
+    },
+    "ChatCompletionReference": {
+        "knowledge_id": "Knowledge base ID used for the chat completion",
+        "chunk_id": "ID of the chunk used in the chat completion",
+        "content": "Content of the chunk used in the chat completion",
+        "type": "Type of the reference, e.g., text, image",
+        "metadata": "Additional metadata about the reference",
+        "source": "Source of the reference, e.g., knowledge_base, external"
+    },
+    "CreateChatCompletionResponse": {
+        "id": "Unique identifier for the chat completion request",
+        "object": "Type of object returned, e.g., chat.completion",
+        "created": "Timestamp of when the chat completion was created",
+        "model": "Model used for generating the chat completion",
+        "choices": "List of choices generated in the chat completion",
+        "metadata": "Additional metadata about the chat completion response",
+        "usage": "Usage statistics for the chat completion request",
+        "references": "References to knowledge base chunks used in the chat completion"
+    },
+    "RequestContextHeaders": {},
+    "MetadataConditionItem": {
+        "name": "Names of the metadata to filter",
+        "comparison_operator": "Comparison operator",
+        "value": "Comparison value, can be omitted when the operator is empty, not empty, null, or not null"
+    },
+    "MetadataCondition": {
+        "logical_operator": "Logical operator, values can be and or or, default is and",
+        "conditions": "List of conditions"
+    },
+    "RetrievalRequest": {
+        "knowledge_id": "knowledge’s unique ID",
+        "query": "User’s query",
+        "retrieval_setting": "Knowledge’s retrieval parameters",
+        "metadata_condition": "Original array filtering"
+    },
+    "RetrievalResponseRecord": {
+        "content": "Contains a chunk of text from a data source in the knowledge base.",
+        "score": "The score of relevance of the result to the query, scope: 0~1",
+        "title": "Document title",
+        "metadata": "Contains metadata attributes and their values for the document in the data source."
+    },
+    "RetrievalResponseError": {
+        "error_code": "Error code",
+        "error_msg": "The description of API exception"
+    },
+    "RetrievalResponse": {
+        "records": "A list of records from querying the knowledge base.",
+        "error": "Error information",
+        "request_id": "Request ID for tracking"
+    },
+    "CreateIndexRequest": {
+        "unique_name": "Name of the index"
+    },
+    "CreateIndexResponse": {
+        "unique_name": "Name of the index"
+    },
+    "ChatRequest": {
+        "knowledge_id": "knowledge’s unique ID",
+        "question": "User’s question",
+        "retrieval_setting": "Knowledge’s retrieval parameters",
+        "metadata_condition": "Original array filtering"
+    },
+    "ChatResponse": {
+        "answer": "The answer to the question based on the retrieved knowledge",
+        "records": "A list of records used to generate the answer",
+        "error": "Error information"
+    },
+    "RAGDocument": {
+        "content": "Content of the document",
+        "title": "Title of the document",
+        "metadata": "Metadata attributes and their values for the document",
+        "type": "Type of the document, e.g., text, image",
+        "source": "Source of the document, e.g., knowledge_base, external"
+    },
+    "AddDocumentsRequest": {
+        "knowledge_id": "knowledge’s unique ID",
+        "documents": "List of documents to be added"
+    },
+    "AddDocumentsResponse": {
+        "documents": "List of documents that were added",
+        "error": "Error information",
+        "request_id": "Request ID for tracking"
+    }
+}

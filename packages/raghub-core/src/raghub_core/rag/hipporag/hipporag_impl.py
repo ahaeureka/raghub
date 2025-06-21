@@ -5,7 +5,7 @@ import itertools
 import json
 import re
 import traceback
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 from loguru import logger
@@ -16,9 +16,11 @@ from raghub_core.operators.ner.promopts import NERPrompt
 from raghub_core.operators.openie.openie_operator import OpenIEOperator
 from raghub_core.operators.rdf.prompts import REPrompt
 from raghub_core.operators.rdf.rdf_operator import RDFOperator
+from raghub_core.prompts.qa import DefaultQAPromptBuilder, QAPromptBuilder
 from raghub_core.rag.base_rag import BaseRAG
 from raghub_core.rag.hipporag.hipporag_storage import HipporagStorage
 from raghub_core.rag.hipporag.prompts import DSPyRerankPrompt, get_query_instruction
+from raghub_core.schemas.chat_response import ChatResponse, QAChatResponse
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_model import GraphEdge, GraphVertex, Namespace, RelationType
 from raghub_core.schemas.hipporag_models import OpenIEInfo
@@ -50,6 +52,7 @@ class HippoRAGImpl(BaseRAG):
         synonymy_edge_query_batch_size=1000,
         synonymy_edge_key_batch_size=1000,
         synonymy_edge_sim_threshold=0.8,
+        qa_prompt_builder: QAPromptBuilder = DefaultQAPromptBuilder(),
     ):
         self.linking_top_k = linking_top_k
         self.passage_node_weight = passage_node_weight
@@ -58,6 +61,7 @@ class HippoRAGImpl(BaseRAG):
         self.synonymy_edge_query_batch_size = synonymy_edge_query_batch_size
         self.synonymy_edge_key_batch_size = synonymy_edge_key_batch_size
         self.synonymy_edge_sim_threshold = synonymy_edge_sim_threshold
+        self._llm = llm
         ner_prompt = NERPrompt()
         self._ner = NEROperator(ner_prompt, llm)
         rdf_prompt = REPrompt()
@@ -82,6 +86,7 @@ class HippoRAGImpl(BaseRAG):
         self._fact_prefix = Namespace.FACT.value
         self._doc_prefix = Namespace.DOC.value
         self.already_init = False
+        self._qa_prompt_builder = qa_prompt_builder
 
     async def create(self, index_name: str):
         if not self.already_init:
@@ -553,7 +558,7 @@ class HippoRAGImpl(BaseRAG):
                         for doc in docs
                     ]
                 )
-            query_to_docs[query] = sorted(top_k_docs, key=lambda x: x.score, reverse=True)
+            query_to_docs[query] = sorted(top_k_docs, key=lambda x: x.score, reverse=True)[:retrieve_top_k]
         return query_to_docs
 
     def get_proc_triples_to_docs(self, all_openie_info: List[OpenIEInfo]) -> Dict[str, Set[str]]:
@@ -1059,3 +1064,56 @@ class HippoRAGImpl(BaseRAG):
                 node["metadata"]["namespace"] = vertex.namespace
             nodes.append(node)
         return nodes
+
+    async def qa(
+        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None
+    ) -> AsyncIterator[QAChatResponse]:
+        """
+        Performs a question-answering operation on the specified index using the provided query.
+
+        Args:
+            unique_name : str
+                The unique name for the index to be used for question answering.
+            query : str
+                The query string for which the answer needs to be retrieved.
+            top_k : int, optional
+                The number of top documents to retrieve. Defaults to 5.
+            prompt : Optional[str], optional
+
+        Returns:
+            AsyncIterator[QAChatResponse]
+                An asynchronous iterator yielding QAChatResponse objects containing the answers and related information.
+        """
+        lang = detect_language(query)
+        res = await self.retrieve(unique_name, [query], top_k)
+        for _, items in res.items():
+            if not items:
+                yield QAChatResponse(query=query, answer="", sources=[], metadata={})
+                continue
+            qa_prompt = self._qa_prompt_builder.build(items, query, lang)
+
+            from langchain.prompts import ChatPromptTemplate
+
+            should_contains_vars = ["question", "context"]
+            if prompt is not None:
+                cpt = ChatPromptTemplate.from_template(prompt)
+                input_variables = cpt.input_variables
+                missing = set(should_contains_vars) - set(input_variables)
+                if missing:
+                    raise ValueError(f"Prompt is missing required variables: {missing}")
+                qa_prompt = cpt.invoke(
+                    {
+                        "question": query,
+                        "context": "\n".join([item.document.content for item in items]),
+                    }
+                ).to_string()
+            logger.debug(f"QA prompt: {qa_prompt}")
+
+            async for resp in self._llm.astream(ChatPromptTemplate.from_template(qa_prompt), {}):
+                ans: ChatResponse = resp
+                yield QAChatResponse(
+                    question=query,
+                    answer=ans.content,
+                    tokens=ans.tokens,
+                    context=json.dumps([item.document.model_dump() for item in items], ensure_ascii=False),
+                )

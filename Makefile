@@ -10,12 +10,11 @@ else
 	VENV_BIN=$(VENV)/bin
 endif
 
-# Get modified/added Python files from git
-GIT_MODIFIED_FILES = $(shell git diff --name-only --diff-filter=d --relative packages | grep '\.py$$')
-GIT_STAGED_FILES = $(shell git diff --cached --name-only --diff-filter=d --relative packages | grep '\.py$$')
-GIT_UNTRACKED_FILES = $(shell git ls-files --others --exclude-standard | grep '\.py$$')
+# Get modified/added Python files from git (excluding *pb2.py files)
+GIT_MODIFIED_FILES = $(shell git diff --name-only --diff-filter=d --relative packages | grep '\.py$$' | grep -v 'pb2\.py$$' | grep -v 'pb2\.pyi$$' | grep -v 'pb2_grpc\.py$$')
+GIT_STAGED_FILES = $(shell git diff --cached --name-only --diff-filter=d --relative packages | grep '\.py$$' | grep -v 'pb2\.py$$' | grep -v 'pb2\.pyi$$' | grep -v 'pb2_grpc\.py$$')
+GIT_UNTRACKED_FILES = $(shell git ls-files --others --exclude-standard | grep '\.py$$' | grep -v 'pb2\.py$$' | grep -v 'pb2\.pyi$$' | grep -v 'pb2_grpc\.py$$')
 GIT_FILES = $(sort $(GIT_MODIFIED_FILES) $(GIT_STAGED_FILES) $(GIT_UNTRACKED_FILES))
-
 setup: $(VENV)/bin/activate
 
 $(VENV)/bin/activate: $(VENV)/.venv-timestamp
@@ -30,17 +29,16 @@ testenv: $(VENV)/.testenv
 $(VENV)/.testenv: $(VENV)/bin/activate
 	# check uv version and use appropriate parameters
 	if . $(VENV_BIN)/activate && uv sync --help | grep -q -- "--active"; then \
-		. $(VENV_BIN)/activate && uv sync --active --all-packages --no-build-isolation --all-extras \
+		. $(VENV_BIN)/activate && uv sync --active --all-packages --no-build-isolation --dev --all-extras \
 			--link-mode=copy; \
 	else \
-		. $(VENV_BIN)/activate && uv sync --all-packages --no-build-isolation --all-extras  \
+		. $(VENV_BIN)/activate && uv sync --all-packages --no-build-isolation --all-extras --dev  \
 			--link-mode=copy; \
 	fi
 	cp .devcontainer/project.pth $(VENV)/lib/python3.11/site-packages
 	touch $(VENV)/.testenv
 	. $(VENV_BIN)/activate && uv tool install  ruff
 	. $(VENV_BIN)/activate && uv tool install pytest
-	. $(VENV_BIN)/activate && uv tool install setuptools
 	. $(VENV_BIN)/activate && uv tool install mypy
 	echo "Test environment setup complete."
 
@@ -51,8 +49,8 @@ ifneq ($(strip $(GIT_FILES)),)
 	# Format code
 	$(VENV_BIN)/ruff format $(GIT_FILES)
 	# Sort imports
-	$(VENV_BIN)/ruff check --select I --fix $(GIT_FILES)
-	$(VENV_BIN)/ruff check --fix $(GIT_FILES)
+	$(VENV_BIN)/ruff check --exclude *pb2.py --extend-exclude packages/raghub-interfaces/src/raghub_interfaces/protos/pb --select I --fix $(GIT_FILES)
+	$(VENV_BIN)/ruff check --exclude *pb2.py --extend-exclude packages/raghub-interfaces/src/raghub_interfaces/protos/pb --fix $(GIT_FILES)
 else
 	@echo "No modified/added Python files to format."
 endif

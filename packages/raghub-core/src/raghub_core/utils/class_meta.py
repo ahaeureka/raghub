@@ -36,6 +36,14 @@ class RegsiterMeta(type):
         elif "name" in dct and cls.name:
             cls._registry[cls.name] = cls  # 子类注册
 
+    @classmethod
+    def registry(cls) -> Dict[str, Type]:
+        """
+        获取注册表
+        :return: 注册表字典
+        """
+        return cls._registry
+
 
 class SingletonRegisterMeta(SingletonMeta, RegsiterMeta, ABCMeta):
     pass

@@ -1,7 +1,6 @@
 import pickle
-from typing import Any
+from typing import Any, Optional
 
-from git import Optional
 from raghub_core.storage.cache import CacheStorage
 
 
@@ -24,13 +23,14 @@ class RedisCacheStorage(CacheStorage):
 
     async def init(self):
         """初始化 Redis 连接"""
-        import redis.asyncio as redis
+        import redis
+        import redis.asyncio as async_redis
 
-        pool = redis.ConnectionPool.from_url(
+        pool = async_redis.ConnectionPool.from_url(
             f"redis://{self._host}:{self._port}/{self._db}",
             password=self._auth,
         )
-        self._redis = redis.Redis.from_pool(pool)
+        self._redis = async_redis.Redis.from_pool(pool)
         self._sync_client = redis.Redis(
             host=self._host,
             port=self._port,
@@ -39,6 +39,7 @@ class RedisCacheStorage(CacheStorage):
         )
         # 验证连接
         await self._redis.ping()
+        await self._redis.close()
 
     def set(self, key: str, value: Any, ttl: Optional[int] = None):
         """
@@ -46,6 +47,8 @@ class RedisCacheStorage(CacheStorage):
         如果 value 是字符串，直接编码为 bytes；
         否则使用 pickle 序列化。
         """
+        if self._sync_client is None:
+            raise RuntimeError("Redis client is not initialized. Call init() first.")
         if isinstance(value, str):
             value_bytes = value.encode("utf-8")
         else:
@@ -62,6 +65,8 @@ class RedisCacheStorage(CacheStorage):
         如果失败，尝试用 pickle 反序列化。
         返回值为字符串。
         """
+        if self._sync_client is None:
+            raise RuntimeError("Redis client is not initialized. Call init() first.")
         value = self._sync_client.get(key)
         if value is None:
             return ""
@@ -72,10 +77,14 @@ class RedisCacheStorage(CacheStorage):
 
     def delete(self, key: str):
         """删除指定键"""
+        if self._sync_client is None:
+            raise RuntimeError("Redis client is not initialized. Call init() first.")
         self._sync_client.delete(key)
 
     def clear(self):
         """清空当前 Redis 数据库"""
+        if self._sync_client is None:
+            raise RuntimeError("Redis client is not initialized. Call init() first.")
         self._sync_client.flushdb()
 
     async def aset(self, key: str, value: Any, ttl: Optional[int] = None):
@@ -84,6 +93,8 @@ class RedisCacheStorage(CacheStorage):
         如果 value 是字符串，直接编码为 bytes；
         否则使用 pickle 序列化。
         """
+        if self._redis is None:
+            raise RuntimeError("Redis client is not initialized. Call init() first.")
         if isinstance(value, str):
             value_bytes = value.encode("utf-8")
         else:
@@ -100,6 +111,8 @@ class RedisCacheStorage(CacheStorage):
         如果失败，尝试用 pickle 反序列化。
         返回值为字符串。
         """
+        if self._redis is None:
+            raise RuntimeError("Redis client is not initialized. Call init() first.")
         value = await self._redis.get(key)
         if value is None:
             return ""
@@ -110,6 +123,8 @@ class RedisCacheStorage(CacheStorage):
 
     async def adelete(self, key: str):
         """删除指定键"""
+        if self._redis is None:
+            raise RuntimeError("Redis client is not initialized. Call init() first.")
         self._redis.delete(key)
 
     async def aclear(self):

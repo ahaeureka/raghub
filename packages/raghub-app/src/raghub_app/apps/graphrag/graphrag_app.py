@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import AsyncIterator, Dict, List
 
 import numpy as np
 from raghub_core.chat.base_chat import BaseChat
@@ -6,6 +6,7 @@ from raghub_core.embedding.base_embedding import BaseEmbedding
 from raghub_core.rag.base_rag import BaseGraphRAGDAO
 from raghub_core.rag.graphrag.graphrag_impl import GraphRAGImpl
 from raghub_core.rag.graphrag.operators import DefaultGraphRAGOperators
+from raghub_core.schemas.chat_response import QAChatResponse
 from raghub_core.schemas.graph_model import GraphRAGRetrieveResultItem
 from raghub_core.schemas.rag_model import RetrieveResultItem
 from raghub_core.storage.graph import GraphStorage
@@ -13,12 +14,12 @@ from raghub_core.storage.structed_data import StructedDataStorage
 from raghub_core.storage.vector import VectorStorage
 from raghub_core.utils.class_meta import ClassFactory
 
-from raghub_app.apps.app_base import BaseApp
+from raghub_app.apps.app_rag_base import BaseRAGApp
 from raghub_app.config.config_models import APPConfig
 
 
-class GraphRAG(BaseApp):
-    name = "graphrag"
+class GraphRAG(BaseRAGApp):
+    name = "graphrag_app"
 
     def __init__(self, config: APPConfig):
         self._llm = ClassFactory.get_instance(
@@ -75,7 +76,7 @@ class GraphRAG(BaseApp):
         await self._graph_store.init()
         await self._db.init()
 
-    async def create_new_index(self, label: str):
+    async def create(self, label: str):
         """
         Create a new index in the GraphRAG application.
         """
@@ -86,11 +87,12 @@ class GraphRAG(BaseApp):
 
     async def retrieve(
         self, unique_name: str, queries: List[str], retrieve_top_k=5, lang="zh"
-    ) -> List[RetrieveResultItem]:
+    ) -> Dict[str, List[RetrieveResultItem]]:
         items: Dict[str, GraphRAGRetrieveResultItem] = await self.app.retrieve(unique_name, queries, retrieve_top_k)
-        retrieval_items: List[RetrieveResultItem] = []
+        retrieval_items: Dict[str, List[RetrieveResultItem]] = {}
         for query, item in items.items():
             vectors = await self._embedder.aencode_query([query])
+            its: List[RetrieveResultItem] = []
             for doc in item.docs:
                 similar = self._embedder.cosine_similarity(
                     vectors[0], np.array(doc.embedding, dtype=float) if doc.embedding is not None else None
@@ -99,7 +101,7 @@ class GraphRAG(BaseApp):
                     "graph": item.graph.model_dump(),
                     "context": item.context,
                 }
-                retrieval_items.append(
+                its.append(
                     RetrieveResultItem(
                         document=doc,
                         score=similar,
@@ -107,6 +109,7 @@ class GraphRAG(BaseApp):
                         metadata=metadata,
                     )
                 )
+            retrieval_items[query] = its
         return retrieval_items
 
     async def delete(self, unique_name: str, docs_to_delete: List[str]):
@@ -117,3 +120,20 @@ class GraphRAG(BaseApp):
             docs_to_delete: List of document IDs to delete.
         """
         await self.app.delete(unique_name, docs_to_delete)
+
+    async def QA(
+        self, unique_name: str, question: str, retrieve_top_k=5, lang="zh", prompt=None
+    ) -> AsyncIterator[QAChatResponse]:
+        """
+        Perform question answering on the GraphRAG application.
+        Args:
+            unique_name: Unique name of the index.
+            question: The question to answer.
+            retrieve_top_k: Number of top results to retrieve (default is 5).
+            lang: Language of the question (default is "zh").
+            prompt: Optional prompt for the LLM.
+        Returns:
+            AsyncIterator[QAChatResponse]
+
+        """
+        return await self.app.qa(unique_name, question, retrieve_top_k)

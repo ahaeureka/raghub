@@ -48,10 +48,13 @@ class ElasticsearchEngine(SearchEngineStorage):
             http_auth=(self._username, self._password) if self._username and self._password else None,
             verify_certs=self._verify_certs,
         )
-        if not await self._client.ping():
-            raise ConnectionError("Elasticsearch connection failed.")
-        else:
-            logger.info("Elasticsearch connection successful.")
+        try:
+            await self._client.ping()
+        except Exception as e:
+            logger.error(f"Failed to connect to Elasticsearch: {e}")
+            raise ConnectionError(f"Failed to connect to Elasticsearch: {str(e)}") from e
+        finally:
+            await self._client.close()
 
     async def create_index(self, index_name: str, index_mapping: Optional[dict] = None):
         """

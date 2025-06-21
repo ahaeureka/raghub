@@ -16,9 +16,12 @@ class ConfigLoader:
     @staticmethod
     def load(cls: Type[TBaseParameters], file_path: str) -> TBaseParameters:
         try:
-            logger.info(f"Environment variables: {os.environ}")  # 添加日志记录以调试环境变量
             content = Path(file_path).read_text(encoding="utf-8")
             data = tomllib.loads(content)
+            logger.info(f"Loading config from {file_path}")
+            if not isinstance(data, dict):
+                raise ValueError(f"Config file {file_path} does not contain a valid dictionary.")
+            logger.debug(f"Config data: {json.dumps(data, ensure_ascii=False, indent=4)}")
             return cls(**data)
         except Exception as e:
             raise RuntimeError(f"Failed to load {file_path} config: {str(e)}")

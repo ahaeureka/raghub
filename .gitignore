@@ -210,3 +210,4 @@ cache/
 .cache/
 !examples/graphrag/graphrag.png
 online.toml
+.vscode/launch.json

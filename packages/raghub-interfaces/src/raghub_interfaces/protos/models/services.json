@@ -1,0 +1,72 @@
+{
+    "RAGService": {
+        "Retrieval": {
+            "input_type": ".raghub_interfaces.RetrievalRequest",
+            "output_type": ".raghub_interfaces.RetrievalResponse",
+            "options": {
+                "[google.api.http]": {
+                    "post": "/v1/rag/retrieval",
+                    "body": "*"
+                }
+            },
+            "streaming_type": "unary",
+            "method_full_name": "/raghub_interfaces.RAGService/Retrieval",
+            "http": {
+                "method": "POST",
+                "path": "/v1/rag/retrieval",
+                "body": "*"
+            }
+        },
+        "CreateIndex": {
+            "input_type": ".raghub_interfaces.CreateIndexRequest",
+            "output_type": ".raghub_interfaces.CreateIndexResponse",
+            "options": {
+                "[google.api.http]": {
+                    "post": "/v1/rag/index",
+                    "body": "*"
+                }
+            },
+            "streaming_type": "unary",
+            "method_full_name": "/raghub_interfaces.RAGService/CreateIndex",
+            "http": {
+                "method": "POST",
+                "path": "/v1/rag/index",
+                "body": "*"
+            }
+        },
+        "Chat": {
+            "input_type": ".raghub_interfaces.CreateChatCompletionRequest",
+            "output_type": ".raghub_interfaces.CreateChatCompletionResponse",
+            "options": {
+                "[google.api.http]": {
+                    "post": "/v1/rag/chat/completions",
+                    "body": "*"
+                }
+            },
+            "streaming_type": "server_streaming",
+            "method_full_name": "/raghub_interfaces.RAGService/Chat",
+            "http": {
+                "method": "POST",
+                "path": "/v1/rag/chat/completions",
+                "body": "*"
+            }
+        },
+        "AddDocuments": {
+            "input_type": ".raghub_interfaces.AddDocumentsRequest",
+            "output_type": ".raghub_interfaces.AddDocumentsResponse",
+            "options": {
+                "[google.api.http]": {
+                    "post": "/v1/rag/documents/add",
+                    "body": "*"
+                }
+            },
+            "streaming_type": "unary",
+            "method_full_name": "/raghub_interfaces.RAGService/AddDocuments",
+            "http": {
+                "method": "POST",
+                "path": "/v1/rag/documents/add",
+                "body": "*"
+            }
+        }
+    }
+}

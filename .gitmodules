@@ -1,3 +1,6 @@
 [submodule "submodules/hipporag"]
 	path = submodules/hipporag
 	url = https://github.com/OSU-NLP-Group/HippoRAG.git
+[submodule "packages/raghub-interfaces/src/protos"]
+	path = packages/raghub-interfaces/src/protos
+	url = git@github.com:ahaeureka/raghub-protos.git

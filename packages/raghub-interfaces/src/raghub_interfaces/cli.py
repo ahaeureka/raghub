@@ -5,19 +5,19 @@
 @Desc    :   CLI入口文件
 """
 
+import asyncio
 import inspect
 from typing import Type
 
-import trio_asyncio
 import typer
 from pydantic_core import PydanticUndefinedType
-from raghub_app.app_schemas.app import APPRunnerParams
-from raghub_app.apps.common.app import BaseAPP
-from raghub_app.apps.registry.register import Registry
-from raghub_app.config.config_models import APPConfig
 from raghub_core.config.manager import ConfigLoader
 from raghub_core.utils.logger.logger import init_logging
 from typing_extensions import Annotated
+
+from raghub_interfaces.config.interface_config import InerfaceConfig
+from raghub_interfaces.interfaces.interface import BaseInterface
+from raghub_interfaces.schemes.params import RunnerParams
 
 cmder = typer.Typer()
 start_cmder = typer.Typer()
@@ -26,13 +26,7 @@ app_config = None
 use_async = False
 
 
-@start_cmder.command("webserver")
-def start_httpserver():
-    """Start http server"""
-    typer.echo("Starting HTTP server...")
-
-
-def create_runner_cmd_option(component_cls: Type[BaseAPP], prams_class: Type[APPRunnerParams]):
+def create_runner_cmd_option(component_cls: Type[BaseInterface], prams_class: Type[RunnerParams]):
     """
     Create a Typer command option for the given APPRunnerParams class
     """
@@ -43,7 +37,6 @@ def create_runner_cmd_option(component_cls: Type[BaseAPP], prams_class: Type[APP
         if not isinstance(field.default, PydanticUndefinedType) and field.default is not None:
             default_value = field.default
         fields.append((field_name, (Annotated[field.annotation, typer.Option(help=field.description)], default_value)))
-    fields.append(("with_async", (Annotated[bool, typer.Option(help="Run the application with async mode")], False)))
     fields.append(
         (
             "config",
@@ -69,18 +62,15 @@ def create_runner_cmd_option(component_cls: Type[BaseAPP], prams_class: Type[APP
         kwargs.pop("self", None)
         p = prams_class(**kwargs)  # 解包参数并创建模型实例
         # p = input
-        config_path = kwargs.get("config", "/app/.devcontainer/dev.toml")  # 获取配置文件路径
-        with_async = kwargs.get("with_async", False)  # 获取是否使用异步模式
-        app_config = ConfigLoader.load(APPConfig, config_path)
+        config_path = kwargs.get("config", "/app/.devcontainer/online.toml")  # 获取配置文件路径
+        # with_async = kwargs.get("with_async", False)  # 获取是否使用异步模式
+        app_config = ConfigLoader.load(InerfaceConfig, config_path)
         # log_level = kwargs.pop("log_level", "DEBUG")  # 获取日志级别
         # log_dir = kwargs.pop("log_dir", "logs")
         init_logging(level=app_config.logger.log_level, log_dir=app_config.logger.log_dir)
-        use_async = with_async
+        # use_async = with_async
         component = component_cls(app_config)
-        component.initialization()
-        if not use_async:
-            return component.run(p)
-        return trio_asyncio.run(component.arun, p)
+        asyncio.run(component(p))
 
     new_params = [
         inspect.Parameter(
@@ -98,25 +88,32 @@ def build_app_cmd():
     Build app command dynamically based on registered components
     """
     # Import components here to register them,like:
-    # from template_app.apps.template_app import TemplateApp  # noqa: F401
+    from raghub_app import apps  # noqa: F401
+    from raghub_ext import storage_ext  # noqa: F401
+
+    from raghub_interfaces import (
+        interfaces,  # noqa: F401
+        services,  # noqa: F401
+    )
+    from raghub_interfaces.registry.register import Registry
 
     components = Registry.list_components_name()
     typer.echo(f"Building app from {components} command...")
     for component_name in components:
         component = Registry.get_component(component_name)
-        run_method = component.run
+        run_method = component.__call__
         sig = inspect.signature(run_method)
 
         params_class = next(
             (
                 p.annotation
                 for p in sig.parameters.values()
-                if inspect.isclass(p.annotation) and issubclass(p.annotation, APPRunnerParams)
+                if inspect.isclass(p.annotation) and issubclass(p.annotation, RunnerParams)
             ),
             None,
         )
         if not params_class:
-            typer.echo(f"No APPRunnerParams subclass found for component {component_name}")
+            typer.echo(f"No RunnerParams subclass found for component {component_name}")
             continue
             # 添加参数
 

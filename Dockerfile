@@ -15,6 +15,7 @@ RUN if [ "$USE_MIRROR_UBUNTU" = "true" ]; then \
     git \
     curl \
     wget \
+    protobuf-compiler \
     && if [ "$USE_CUDA" = "true" ]; then \
     wget https://developer.download.nvidia.cn/compute/cuda/12.6.3/local_installers/cuda-repo-debian12-12-6-local_12.6.3-560.35.05-1_amd64.deb && \
     dpkg -i cuda-repo-debian12-12-6-local_12.6.3-560.35.05-1_amd64.deb && \

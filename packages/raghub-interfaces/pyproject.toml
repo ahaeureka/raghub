@@ -4,10 +4,19 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [ "typer>=0.15.2",]
+dependencies = [
+ "grpcio-tools>=1.62.3",
+ "hypercorn==0.17.3",
+ "protobuf-pydantic-gen>=0.1.7",
+ "typer>=0.15.2",
+]
 
 [tool.uv]
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"
 default = true
+
+
+[tool.uv.sources]
+protobuf-pydantic-gen = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git", rev = "feature/fastapi-grpc" }
 

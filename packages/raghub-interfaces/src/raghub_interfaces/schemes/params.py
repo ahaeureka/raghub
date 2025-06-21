@@ -1,5 +1,5 @@
 from pydantic import BaseModel
 
 
-class APPRunnerParams(BaseModel):
+class RunnerParams(BaseModel):
     pass

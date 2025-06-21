@@ -1,22 +1,23 @@
-from typing import Dict, List
+from typing import AsyncIterator, Dict, List
 
 from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
 from raghub_core.embedding import BaseEmbedding
 from raghub_core.rag.hipporag.hipporag_impl import HippoRAGImpl
 from raghub_core.rag.hipporag.hipporag_storage import HipporagStorage
+from raghub_core.schemas.chat_response import QAChatResponse
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.rag_model import RetrieveResultItem
 from raghub_core.storage.graph import GraphStorage
 from raghub_core.storage.vector import VectorStorage
 from raghub_core.utils.class_meta import ClassFactory
 
-from raghub_app.apps.app_base import BaseApp
+from raghub_app.apps.app_rag_base import BaseRAGApp
 from raghub_app.config.config_models import APPConfig
 
 
-class HippoRAG(BaseApp):
-    name = "hipporag"
+class HippoRAG(BaseRAGApp):
+    name = "hipporag_app"
 
     def __init__(self, config: APPConfig):
         self._llm = ClassFactory.get_instance(
@@ -50,6 +51,7 @@ class HippoRAG(BaseApp):
         )
         self.config = config
         logger.debug(f"Storage Provider store: {self.config.hipporag.storage_provider}")
+        logger.debug(f"Database url: {config.database.db_url}")
         self._db = ClassFactory.get_instance(
             config.hipporag.storage_provider,
             HipporagStorage,
@@ -143,3 +145,25 @@ class HippoRAG(BaseApp):
             None
         """
         await self.hipporag.init()
+
+    async def QA(
+        self, unique_name: str, question: str, retrieve_top_k=5, lang="zh", prompt=None
+    ) -> AsyncIterator[QAChatResponse]:
+        """
+        Performs question answering on the HippoRAG application.
+        Args:
+            unique_name : str
+                The unique name for the index to be used for question answering.
+            question : str
+                The question to be answered.
+            retrieve_top_k : int, optional
+                The number of top documents to retrieve for answering the question. Defaults to 5.
+            lang : str, optional
+                The language of the question. Defaults to "zh".
+            prompt : Optional[BasePrompt], optional
+                A custom prompt to use for generating the answer. Defaults to None.
+        Returns:
+            AsyncIterator[QAChatResponse]
+            An asynchronous iterator that yields QAChatResponse objects containing the answers and metadata.
+        """
+        return await self.hipporag.qa(unique_name, question, retrieve_top_k)

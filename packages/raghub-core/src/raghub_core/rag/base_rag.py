@@ -1,6 +1,7 @@
 from abc import abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
+from raghub_core.schemas.chat_response import QAChatResponse
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_model import GraphCommunity, GraphEdge, GraphModel, GraphVertex, QueryIndentationModel
 from raghub_core.schemas.hipporag_models import OpenIEInfo
@@ -67,6 +68,22 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
             List[RetrieveResultItem]: List of retrieved documents and their corresponding scores.
         """
         raise NotImplementedError("This method 'retrieve' should be overridden by subclasses.")
+
+    @abstractmethod
+    async def qa(
+        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None
+    ) -> AsyncIterator[QAChatResponse]:
+        """
+        Perform question answering on the RAG system.
+        Args:
+            unique_name (str): Name of the index to use for the question answering.
+            query (str): The question to answer.
+            top_k (int): Number of top results to retrieve.
+            prompt (Optional[str]): Optional prompt for the LLM.
+        Returns:
+            AsyncIterator[QAChatResponse]: Iterator of QAChatResponse containing the answers and their scores.
+        """
+        raise NotImplementedError("This method 'qa' should be overridden by subclasses.")
 
 
 class BaseGraphRAGDAO(metaclass=SingletonRegisterMeta):

@@ -1,6 +1,7 @@
+from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
+from langchain.prompts import ChatPromptTemplate
 from raghub_core.prompts.base_prompt import BasePrompt
 from raghub_core.schemas.prompt import PromptModel
 
@@ -97,7 +98,10 @@ class GraphRAGContextPrompt(BasePrompt):
 - 以置信度评估结尾
 - 使用markdown引用格式`>`高亮"GraphRAG"原始文本细节
 
-==========
+=======================
+
+[用户问题]:
+{question}
 """,
             ),
             PromptModel(
@@ -183,7 +187,10 @@ answering the user's questions accurately and appropriately, and ensuring that n
 - Conclude with confidence assessment
 - Use the markdown format of the "quote" to highlight the original text (in details) from "GraphRAG"
 
-=====
+============
+
+[User Question]:
+{question}
 """,  # noqa: E501
             ),
         ]
@@ -202,6 +209,62 @@ answering the user's questions accurately and appropriately, and ensuring that n
         if language not in self._prompts:
             raise ValueError(f"Prompt for language '{language}' not found.")
 
-        human_message = HumanMessagePromptTemplate.from_template(self._prompts[language].system_message)
-
+        human_message = ChatPromptTemplate.from_template(self._prompts[language].system_message)
         return human_message
+
+
+class GraphRAGQAPromptBuilder(ABC):
+    """
+    Abstract base class for building GraphRAG QA prompts.
+    This class defines the interface for creating prompts for GraphRAG systems.
+    """
+
+    @abstractmethod
+    def build(
+        self, context: str, knowledge_graph: str, knowledge_graph_for_doc: str, question: str, lang="zh"
+    ) -> ChatPromptTemplate:
+        """
+        Build a prompt template for GraphRAG QA.
+
+        Args:
+            context (str): The context information to be included in the prompt.
+            knowledge_graph (str): The knowledge graph information to be included in the prompt.
+            knowledge_graph_for_doc (str): The original text from RAG to be included in the prompt.
+
+        Returns:
+            ChatPromptTemplate: The constructed prompt template.
+        """
+        raise NotImplementedError("Subclasses must implement this method.")
+
+
+class DefaultGraphRAGQAPromptBuilder(GraphRAGQAPromptBuilder):
+    """
+    Default implementation of the GraphRAGQAPromptBuilder.
+    This class provides a basic implementation for building GraphRAG QA prompts.
+    """
+
+    def build(self, context: str, knowledge_graph: str, knowledge_graph_for_doc: str, question: str, lang="zh") -> str:
+        """
+        Build a prompt template for GraphRAG QA.
+
+        Args:
+            context (str): The context information to be included in the prompt.
+            knowledge_graph (str): The knowledge graph information to be included in the prompt.
+            knowledge_graph_for_doc (str): The original text from RAG to be included in the prompt.
+
+        Returns:
+            ChatPromptTemplate: The constructed prompt template.
+        """
+        return (
+            GraphRAGContextPrompt()
+            .get(language=lang)
+            .invoke(
+                dict(
+                    context=context,
+                    knowledge_graph=knowledge_graph,
+                    knowledge_graph_for_doc=knowledge_graph_for_doc,
+                    question=question,
+                )
+            )
+            .to_string()
+        )

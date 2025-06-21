@@ -3,6 +3,7 @@ from typing import List, Type
 
 import numpy as np
 from raghub_core.schemas.document import Document
+from raghub_core.schemas.graph_model import GraphEdge, GraphVertex
 from sqlmodel import SQLModel
 
 
@@ -64,7 +65,7 @@ def detect_language(text) -> str:
     return lang
 
 
-def docs_duplicate_filter(docs: List[Document]) -> List[Document]:
+def duplicate_filter(docs: List[Document | GraphVertex | GraphEdge]) -> List[Document | GraphVertex | GraphEdge]:
     """
     Remove duplicates from a list while preserving the order.
 

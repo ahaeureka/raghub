@@ -1,11 +1,14 @@
 import asyncio
-from typing import Dict, List, Optional
+import json
+from typing import AsyncIterator, Dict, List, Optional
 
 from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
 from raghub_core.operators.graph.query_indent_det import QueryIndentDetectionOperator
+from raghub_core.prompts.graph_qa import DefaultGraphRAGQAPromptBuilder, GraphRAGQAPromptBuilder
 from raghub_core.rag.base_rag import BaseGraphRAGDAO, BaseRAG
 from raghub_core.rag.graphrag.operators import GraphRAGOperators
+from raghub_core.schemas.chat_response import ChatResponse, QAChatResponse
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_extract_model import GraphExtractOperatorOutputModel
 from raghub_core.schemas.graph_model import (
@@ -21,7 +24,7 @@ from raghub_core.schemas.graph_model import (
 from raghub_core.schemas.keywords_model import KeywordsOperatorOutputModel
 from raghub_core.schemas.summarize_model import SummarizeOperatorOutputModel
 from raghub_core.utils.graph.graph_helper import GraphHelper
-from raghub_core.utils.misc import compute_mdhash_id, detect_language, docs_duplicate_filter
+from raghub_core.utils.misc import compute_mdhash_id, detect_language, duplicate_filter
 
 
 class GraphRAGImpl(BaseRAG):
@@ -29,7 +32,13 @@ class GraphRAGImpl(BaseRAG):
     GraphRAG implementation.
     """
 
-    def __init__(self, llm: BaseChat, dao: BaseGraphRAGDAO, operators: GraphRAGOperators):
+    def __init__(
+        self,
+        llm: BaseChat,
+        dao: BaseGraphRAGDAO,
+        operators: GraphRAGOperators,
+        qa_prompt_builder: GraphRAGQAPromptBuilder = DefaultGraphRAGQAPromptBuilder(),
+    ):
         self.llm = llm
         self.storage = dao
         self._topk = 5
@@ -42,6 +51,7 @@ class GraphRAGImpl(BaseRAG):
         self._doc_index = "{}_docs"
         self._communities_index = "{}_communities"
         self.lock = asyncio.Lock()
+        self.qa_prompt_builder = qa_prompt_builder
 
     def init(self):
         pass
@@ -369,10 +379,13 @@ class GraphRAGImpl(BaseRAG):
                 docs = await self.storage.get_docs_by_entities(unique_name, [v.content for v in graph.vertices])
 
             logger.debug(f"Retrieved {len(docs)} documents by entities: {entities}")
-
-        subgraph = GraphHelper.format_graph(graph) if graph and graph.vertices else ""
+        subgraph = ""
+        if graph and graph.vertices:
+            graph.vertices = duplicate_filter(graph.vertices)
+            graph.edges = duplicate_filter(graph.edges)
+            subgraph = GraphHelper.format_graph(graph) if graph and graph.vertices else ""
         return GraphRAGRetrieveResultItem(
-            query=query, context=context, graph=graph, subgraph=subgraph, docs=docs_duplicate_filter(docs)
+            query=query, context=context, graph=graph, subgraph=subgraph, docs=duplicate_filter(docs)
         )
 
     # async def _match_entities_to_docs
@@ -423,8 +436,55 @@ class GraphRAGImpl(BaseRAG):
 
         return similar_entities
 
-    async def qa(self, unique_name: str, query: str, top_k: int = 5) -> GraphRAGRetrieveResultItem:
-        self.llm.achat()
+    async def qa(
+        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None
+    ) -> AsyncIterator[QAChatResponse]:
+        result = await self._retrieve_query(unique_name, query, top_k)
+        lang = detect_language(query)
+        if lang not in ["zh", "en"]:
+            lang = "en"
+        qa_prompt = self.qa_prompt_builder.build(
+            question=query,
+            context=result.context,
+            knowledge_graph=result.subgraph,
+            knowledge_graph_for_doc="\n".join([doc.content for doc in result.docs]),
+        )
+        from langchain.prompts import ChatPromptTemplate
+
+        shuold_container_vars = ["question", "context", "knowledge_graph", "knowledge_graph_for_doc"]
+        if prompt:
+            cpt = ChatPromptTemplate.from_template(prompt)
+            input_vars = cpt.input_variables
+            missing = set(shuold_container_vars) - set(input_vars)
+            if missing:
+                raise ValueError(
+                    f"Prompt is missing required variables: {missing}. Required variables are: {shuold_container_vars}"
+                )
+            qa_prompt = cpt.invoke(
+                dict(
+                    question=query,
+                    context=result.context,
+                    knowledge_graph=result.subgraph,
+                    knowledge_graph_for_doc="\n".join([doc.content for doc in result.docs]),
+                )
+            ).to_string()
+
+        logger.debug(f"Prompt for query '{query}': {qa_prompt}")
+        stream = await self.llm.astream(qa_prompt=ChatPromptTemplate.from_template(prompt), input={})
+
+        async for answer in stream:
+            ans: ChatResponse = answer
+            context = {
+                "context": result.context,
+                "knowledge_graph": result.graph.model_dump(),
+                "knowledge_graph_for_doc": result.subgraph,
+            }
+            yield QAChatResponse(
+                question=query,
+                answer=ans.content,
+                tokens=ans.tokens,
+                context=json.dumps(context, ensure_ascii=False),
+            )
 
     async def retrieve(
         self, unique_name: str, queries: List[str], retrieve_top_k: int = 10

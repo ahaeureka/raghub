@@ -57,12 +57,6 @@ class GraphRAGDAO(BaseGraphRAGDAO):
             None
         """
         pass
-        # Create a new index in the graph storage
-        # await self.graph_store.create(unique_name)
-        # await self.embedding_store.create(self._entities_index.format(unique_name))
-        # await self.embedding_store.create(self._doc_index.format(unique_name))
-        # await self.embedding_store.create(self._context_history_index.format(unique_name))
-        # await self.embedding_store.create(self._communities_index.format(unique_name))
 
     async def add_documents(self, index_name: str, documents: List[Document]) -> List[Document]:
         """

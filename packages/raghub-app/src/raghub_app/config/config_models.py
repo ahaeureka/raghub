@@ -2,6 +2,7 @@ from typing import Optional
 
 from raghub_core.config.base import BaseParameters
 from raghub_core.config.raghub_config import CacheConfig, DatabaseConfig, RAGHubConfig, SearchEngineConfig
+from raghub_core.utils.file.project import ProjectHelper
 
 
 class LoggerConfig(BaseParameters):
@@ -64,7 +65,7 @@ class HippoRAGConfig(BaseParameters):
         tags=["embeddings"],
     )
     dspy_file_path: Optional[str] = BaseParameters.field(
-        default=None,
+        default=(ProjectHelper.get_project_root() / "configs" / "filter_llama3.3-70B-Instruct.json").as_posix(),
         description="Path to the dspy file",
         tags=["dspy"],
     )
