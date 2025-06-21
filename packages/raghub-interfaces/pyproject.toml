@@ -9,9 +9,13 @@ dependencies = [
  "hypercorn==0.17.3",
  "protobuf-pydantic-gen>=0.1.7",
  "typer>=0.15.2",
+ "raghub-core>=0.1.0",
+ "raghub-ext",
+ "raghub-app"
 ]
 
 [tool.uv]
+managed = true
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"
 default = true
@@ -19,4 +23,11 @@ default = true
 
 [tool.uv.sources]
 protobuf-pydantic-gen = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git", rev = "feature/fastapi-grpc" }
-
+raghub-ext = { workspace = true }
+raghub-app = { workspace = true }
+raghub-core = { workspace =true }
+[project.scripts]
+raghub = 'raghub_interfaces.raghub:main'
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"

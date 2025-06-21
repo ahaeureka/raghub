@@ -3733,7 +3733,7 @@ wheels = [
 [[package]]
 name = "protobuf-pydantic-gen"
 version = "0.1.7"
-source = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git?rev=feature%2Ffastapi-grpc#035dba2788655baa00b1e1cb27ca68bd29c8689d" }
+source = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git?rev=feature%2Ffastapi-grpc#dfdb511d9a6da98a8e98bf25eac24f08d0830517" }
 dependencies = [
     { name = "annotated-types" },
     { name = "autopep8" },
@@ -4483,11 +4483,14 @@ redis = [{ name = "redis", extras = ["hiredis"], specifier = ">=5.0.0" }]
 [[package]]
 name = "raghub-interfaces"
 version = "0.1.0"
-source = { virtual = "packages/raghub-interfaces" }
+source = { editable = "packages/raghub-interfaces" }
 dependencies = [
     { name = "grpcio-tools" },
     { name = "hypercorn" },
     { name = "protobuf-pydantic-gen" },
+    { name = "raghub-app" },
+    { name = "raghub-core" },
+    { name = "raghub-ext" },
     { name = "typer" },
 ]
 
@@ -4496,6 +4499,9 @@ requires-dist = [
     { name = "grpcio-tools", specifier = ">=1.62.3" },
     { name = "hypercorn", specifier = "==0.17.3" },
     { name = "protobuf-pydantic-gen", git = "https://github.com/begonia-org/pydantic-protobuf-gen.git?rev=feature%2Ffastapi-grpc" },
+    { name = "raghub-app", virtual = "packages/raghub-app" },
+    { name = "raghub-core", virtual = "packages/raghub-core" },
+    { name = "raghub-ext", virtual = "packages/raghub-ext" },
     { name = "typer", specifier = ">=0.15.2" },
 ]
 

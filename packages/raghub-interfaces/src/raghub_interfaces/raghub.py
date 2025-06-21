@@ -124,10 +124,10 @@ def build_app_cmd():
         )
 
 
-if __name__ == "__main__":
-    # 构建动态命令
-    print(f"start {create_runner_cmd_option.__annotations__}, {create_runner_cmd_option.__dict__}")
-
+def main():
     build_app_cmd()
-    # print(f"start {start_server.__annotations__}")
     cmder()
+
+
+if __name__ == "__main__":
+    main()
