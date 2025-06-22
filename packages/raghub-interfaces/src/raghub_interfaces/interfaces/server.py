@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 from grpc_fastapi_gateway.gateway import Gateway
@@ -47,6 +48,11 @@ class Server(BaseInterface):
         from raghub_interfaces.services.rag import RAGServiceImpl
 
         services = {"rag": [RAGServiceImpl(self._config)]}
+        tasks = []
+        for _, service_list in services.items():
+            for service in service_list:
+                tasks.append(service.initialize())
+        await asyncio.gather(*tasks)
         protos_dir = os.path.dirname(os.path.dirname(rag_model.__file__))
         self._gw = Gateway(
             fastapi_app=self._web.app,

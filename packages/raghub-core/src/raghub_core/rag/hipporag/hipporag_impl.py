@@ -691,10 +691,6 @@ class HippoRAGImpl(BaseRAG):
         logger.info("Graph construction completed!")
 
     def _save(self):
-        from raghub_core.storage.igraph_store import IGraphStore
-
-        if isinstance(self._graph_store, IGraphStore):
-            self._graph_store.save(self.graph_path)
         logger.info("Saving graph completed!")
 
     async def init(self):
@@ -1066,7 +1062,7 @@ class HippoRAGImpl(BaseRAG):
         return nodes
 
     async def qa(
-        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None
+        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None, llm: Optional[BaseChat] = None
     ) -> AsyncIterator[QAChatResponse]:
         """
         Performs a question-answering operation on the specified index using the provided query.
@@ -1078,7 +1074,9 @@ class HippoRAGImpl(BaseRAG):
                 The query string for which the answer needs to be retrieved.
             top_k : int, optional
                 The number of top documents to retrieve. Defaults to 5.
-            prompt : Optional[str], optional
+            prompt : Optional[str], optional,
+            llm : Optional[BaseChat], optional
+                The language model to be used for generating the answer. If not provided, the default LLM will be used.
 
         Returns:
             AsyncIterator[QAChatResponse]
@@ -1107,10 +1105,10 @@ class HippoRAGImpl(BaseRAG):
                         "context": "\n".join([item.document.content for item in items]),
                     }
                 ).to_string()
-            logger.debug(f"QA prompt: {qa_prompt}")
-
+            llm = llm or self._llm
             async for resp in self._llm.astream(ChatPromptTemplate.from_template(qa_prompt), {}):
                 ans: ChatResponse = resp
+                logger.debug(f"Answer: {ans.content}, Tokens: {ans.tokens}")
                 yield QAChatResponse(
                     question=query,
                     answer=ans.content,

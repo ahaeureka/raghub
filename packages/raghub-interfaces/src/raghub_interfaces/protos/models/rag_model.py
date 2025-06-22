@@ -6,7 +6,7 @@
 @Desc    :
 """
 
-from typing import Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 
 from google.protobuf import message as _message
 from google.protobuf import message_factory
@@ -63,7 +63,7 @@ class RetrievalRequest(BaseModel):
     retrieval_setting: RetrievalSetting = _Field(
         description="Knowledge’s retrieval parameters", default=RetrievalSetting()
     )
-    metadata_condition: Optional[MetadataCondition] = _Field(description="Original array filtering")
+    metadata_condition: Optional[MetadataCondition] = _Field(description="Original array filtering", default=None)
 
     def to_protobuf(self) -> _message.Message:
         _proto = pool.FindMessageTypeByName("raghub_interfaces.RetrievalRequest")
@@ -200,7 +200,7 @@ class RAGDocument(BaseModel):
 
     content: str = _Field(description="Content of the document")
     title: str = _Field(description="Title of the document")
-    metadata: Optional[Dict[str, str]] = _Field(description="Metadata attributes and their values for the document")
+    metadata: Optional[Dict[str, Any]] = _Field(description="Metadata attributes and their values for the document")
     type: Optional[str] = _Field(description="Type of the document, e.g., 'text', 'image'", default="text")
     source: Optional[str] = _Field(
         description="Source of the document, e.g., 'knowledge_base', 'external'", default="knowledge_base"

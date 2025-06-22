@@ -21,6 +21,7 @@ class HippoRAGLocalStorage(HipporagStorage):
         self._search_engine_config = search_engine_config
         self._cache: Optional[CacheStorage] = None
         self._cache_prefix = "raghub:hipporag"
+        self._db: Optional[StructedDataStorage] = None
 
     async def create_new_index(self, label: str):
         pass
@@ -37,12 +38,19 @@ class HippoRAGLocalStorage(HipporagStorage):
         await self._cache.init()
 
     async def save_openie_info(self, label: str, openie_info: List[OpenIEInfo]):
+        if not self._db:
+            raise ValueError("Database is not initialized")
+        # Save OpenIEInfo objects to the database
         await self._db.batch_add(openie_info)
 
     async def get_openie_info(self, label: str, keys: List[str]) -> List[OpenIEInfo]:
+        if not self._db:
+            raise ValueError("Database is not initialized")
         return await self._db.get(keys, OpenIEInfo)
 
     async def delete_openie_info(self, label: str, keys: List[str]):
+        if not self._db:
+            raise ValueError("Database is not initialized")
         await self._db.delete(keys, OpenIEInfo)
 
     async def set_ent_node_to_chunk_ids(self, label: str, ent_node_id: str, ent_node_to_chunk_ids: List[str]):
@@ -121,6 +129,8 @@ class HippoRAGLocalStorage(HipporagStorage):
 
         # 查询OpenIEInfo表
         openie_query = select(OpenIEInfo.idx).where(and_(openie_condition, OpenIEInfo.is_deleted == False))  # noqa: E712
+        if not self._db:
+            raise ValueError("Database is not initialized")
         result = await self._db.exec(openie_query)
         return [row.idx for row in result]
 

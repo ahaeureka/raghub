@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
+from raghub_core.chat.base_chat import BaseChat
 from raghub_core.schemas.chat_response import QAChatResponse
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_model import GraphCommunity, GraphEdge, GraphModel, GraphVertex, QueryIndentationModel
@@ -71,7 +72,7 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
 
     @abstractmethod
     async def qa(
-        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None
+        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None, llm: Optional[BaseChat] = None
     ) -> AsyncIterator[QAChatResponse]:
         """
         Perform question answering on the RAG system.
@@ -80,6 +81,7 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
             query (str): The question to answer.
             top_k (int): Number of top results to retrieve.
             prompt (Optional[str]): Optional prompt for the LLM.
+            llm (Optional[BaseChat]): Optional LLM instance to use for generating answers.
         Returns:
             AsyncIterator[QAChatResponse]: Iterator of QAChatResponse containing the answers and their scores.
         """

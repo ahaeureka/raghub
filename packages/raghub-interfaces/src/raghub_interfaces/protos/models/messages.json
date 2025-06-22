@@ -428,7 +428,8 @@
             "repeated": false,
             "required": false,
             "ext": {
-                "description": "Original array filtering"
+                "description": "Original array filtering",
+                "default": "None"
             },
             "description": "Original array filtering"
         }
@@ -632,7 +633,7 @@
             "description": "Title of the document"
         },
         "metadata": {
-            "type": "Dict[str,str]",
+            "type": "Dict[str,Any]",
             "repeated": false,
             "required": false,
             "ext": {

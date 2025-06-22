@@ -228,6 +228,7 @@ class IGraphStore(GraphStorage):
                 path = os.path.join(self._graph_path, f"{fname}_{index_name}.pickle")
             else:
                 path = os.path.join(self._graph_path, f"{fname}_{index_name}{ext}")
+            logger.debug(f"Saving graph to {path}.")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             self._graph[index_name].write_pickle(path)
             logger.info(f"Graph saved to {path}.")

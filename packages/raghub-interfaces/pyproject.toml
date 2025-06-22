@@ -11,7 +11,7 @@ dependencies = [
  "typer>=0.15.2",
  "raghub-core>=0.1.0",
  "raghub-ext",
- "raghub-app"
+ "raghub-app",
 ]
 
 [tool.uv]
@@ -22,10 +22,10 @@ default = true
 
 
 [tool.uv.sources]
-protobuf-pydantic-gen = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git", rev = "feature/fastapi-grpc" }
 raghub-ext = { workspace = true }
 raghub-app = { workspace = true }
 raghub-core = { workspace =true }
+protobuf-pydantic-gen = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git", rev = "feature/fastapi-grpc" }
 [project.scripts]
 raghub = 'raghub_interfaces.raghub:main'
 [build-system]

@@ -2,6 +2,7 @@ from typing import AsyncIterator, List
 
 import grpc
 from loguru import logger
+from protobuf_pydantic_gen.any_type_transformer import AnyTransformer
 from raghub_app.apps.app_rag_base import BaseRAGApp
 from raghub_core.schemas.chat_response import QAChatResponse
 from raghub_core.schemas.document import Document
@@ -10,6 +11,7 @@ from raghub_core.utils.class_meta import ClassFactory
 from raghub_core.utils.misc import compute_mdhash_id
 
 from raghub_interfaces.config.interface_config import InerfaceConfig
+from raghub_interfaces.protos.models.rag_model import RAGDocument
 from raghub_interfaces.protos.pb import chat_pb2, rag_pb2
 from raghub_interfaces.protos.pb.rag_pb2_grpc import RAGServiceServicer
 from raghub_interfaces.services.service_base import ServiceBase
@@ -93,12 +95,33 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
         if isinstance(settings, dict):
             settings = chat_pb2.RetrievalSetting(**settings)
         index = 0
-        qa_resulst = await self.app.QA(
+        # llm = None
+        # if request.m
+        # auth = self.get_auth(context)
+        # if auth:
+        #     auth = get_openai_key_from_auth(auth)
+        # model = request.model
+        # if model:
+        #     _llm = ClassFactory.get_instance(
+        #     "openai-proxy",
+        #     BaseChat,
+        #     model_name=config.rag.llm.model,
+        #     api_key=config.rag.llm.api_key,
+        #     base_url=config.rag.llm.base_url,
+        #     temperature=config.rag.llm.temperature,
+        #     timeout=config.rag.llm.timeout,
+        # )
+        # qa_resulst = self.app.QA(
+        #     unique_name=unique_name,
+        #     question=query,
+        #     retrieve_top_k=settings.top_k,
+        # )
+        r = self.app.QA(
             unique_name=unique_name,
             question=query,
             retrieve_top_k=settings.top_k,
         )
-        async for resp in qa_resulst:
+        async for resp in r:
             if resp:
                 ans: QAChatResponse = resp
                 response_message = chat_pb2.ChatMessage(
@@ -113,6 +136,7 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
                     ),
                 )
                 index += 1
+                logger.debug(f"Chat response: {response}")
                 yield response
 
     async def AddDocuments(
@@ -122,12 +146,12 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
         docs: List[Document] = []
         rag_docs = request.documents
         for rag_doc in rag_docs:
-            metadata = rag_doc.metadata
-            metadata["source"] = rag_doc.source
-            metadata["type"] = rag_doc.type
+            rag_doc_model = RAGDocument.from_protobuf(rag_doc)  # Ensure the RAGDocument is properly converted
+            rag_doc_model.metadata["source"] = rag_doc.source
+            rag_doc_model.metadata["type"] = rag_doc.type
             doc = Document(
                 content=rag_doc.content,
-                metadata=metadata,
+                metadata=rag_doc_model.metadata,
                 uid=compute_mdhash_id(request.knowledge_id, rag_doc.content, Namespace.DOC.value),
             )
             docs.append(doc)
@@ -135,9 +159,10 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
         # response = rag_pb2.AddDocumentsResponse()
         rsp_rag_docs: List[rag_pb2.RAGDocument] = []
         for doc in new_docs:
+            logger.debug(f"Document added services: {doc}..")
             rag_doc = rag_pb2.RAGDocument(
                 content=doc.content,
-                metadata=doc.metadata,
+                metadata={key: AnyTransformer.any_type_to_protobuf(value) for key, value in doc.metadata.items()},
                 source=doc.metadata.get("source", ""),
                 type=doc.metadata.get("type", ""),
             )

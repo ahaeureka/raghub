@@ -1,4 +1,4 @@
-from typing import AsyncIterator, Dict, List
+from typing import AsyncIterator, Dict, List, Optional
 
 import numpy as np
 from raghub_core.chat.base_chat import BaseChat
@@ -122,7 +122,7 @@ class GraphRAG(BaseRAGApp):
         await self.app.delete(unique_name, docs_to_delete)
 
     async def QA(
-        self, unique_name: str, question: str, retrieve_top_k=5, lang="zh", prompt=None
+        self, unique_name: str, question: str, retrieve_top_k=5, lang="zh", prompt=None, llm: Optional[BaseChat] = None
     ) -> AsyncIterator[QAChatResponse]:
         """
         Perform question answering on the GraphRAG application.
@@ -132,8 +132,10 @@ class GraphRAG(BaseRAGApp):
             retrieve_top_k: Number of top results to retrieve (default is 5).
             lang: Language of the question (default is "zh").
             prompt: Optional prompt for the LLM.
+            llm: Optional LLM instance to use for answering the question. If not provided, the default LLM will be used.
         Returns:
             AsyncIterator[QAChatResponse]
 
         """
-        return await self.app.qa(unique_name, question, retrieve_top_k)
+        async for r in self.app.qa(unique_name, question, retrieve_top_k, prompt, llm):
+            yield r

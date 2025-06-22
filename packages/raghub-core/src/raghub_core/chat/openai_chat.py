@@ -36,7 +36,10 @@ class OpenAIProxyChat(BaseChat):
         self._response_cache = response_cache
 
     def _build_chain(
-        self, prompt: ChatPromptTemplate, output_parser: Optional[Callable[[AIMessage], TChatResponse]] = None
+        self,
+        prompt: ChatPromptTemplate,
+        output_parser: Optional[Callable[[AIMessage], TChatResponse]] = None,
+        streaming: bool = False,
     ) -> Runnable[Any, TChatResponse]:
         from langchain.callbacks import StreamingStdOutCallbackHandler
 
@@ -47,6 +50,8 @@ class OpenAIProxyChat(BaseChat):
             temperature=self._temperature,
             timeout=self._timeout,
             verbose=True,  # 启用详细日志
+            streaming=streaming,  # 是否启用流式输出
+            stream_usage=streaming,  # 是否流式输出使用情况
             callbacks=[StreamingStdOutCallbackHandler()],  # 实时输出调试信息
             # cache=self._response_cache,  # 添加缓存支持
         )
@@ -56,8 +61,12 @@ class OpenAIProxyChat(BaseChat):
         if output_parser is not None:
             chain = chain | RunnableLambda(output_parser)
         else:
-            # 默认输出解析器
-            chain = chain | RunnableLambda(self.default_output_parser)
+            if not streaming:
+                # 默认输出解析器
+                chain = chain | RunnableLambda(self.default_output_parser)
+            # else:
+            #     # 如果是流式输出，使用 AIMessageChunk 作为输出类型
+            #     chain = chain | RunnableLambda(self.default_streaming_output_parser)
         return chain
 
     @tenacity.retry(
@@ -100,11 +109,14 @@ class OpenAIProxyChat(BaseChat):
         input: Dict[str, str],
         output_parser: Optional[Callable[[AIMessage], ChatResponse]] = None,
     ) -> AsyncIterator[ChatResponse]:
-        chain = self._build_chain(prompt, output_parser)
-        # 执行链并返回结果
+        chain = self._build_chain(prompt, output_parser, True)
         input = self.preprocess_input(input)
-        async for ans in chain.astream(input):
-            yield ans
+        content = ""
+        async for r in chain.astream(input):
+            chat_resp = self.default_streaming_output_parser(r) if output_parser is None else output_parser(r)
+            content += chat_resp.content
+            chat_resp.content = content
+            yield chat_resp
 
     def preprocess_input(self, input: Dict[str, str]) -> Dict[str, str]:
         """

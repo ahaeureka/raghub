@@ -49,8 +49,8 @@ ifneq ($(strip $(GIT_FILES)),)
 	# Format code
 	$(VENV_BIN)/ruff format $(GIT_FILES)
 	# Sort imports
-	$(VENV_BIN)/ruff check --exclude *pb2.py --extend-exclude packages/raghub-interfaces/src/raghub_interfaces/protos/pb --select I --fix $(GIT_FILES)
-	$(VENV_BIN)/ruff check --exclude *pb2.py --extend-exclude packages/raghub-interfaces/src/raghub_interfaces/protos/pb --fix $(GIT_FILES)
+	. $(VENV_BIN)/activate && uv tool run ruff check --exclude *pb2.py --extend-exclude packages/raghub-interfaces/src/raghub_interfaces/protos/pb --select I --fix $(GIT_FILES)
+	. $(VENV_BIN)/activate && uv tool run ruff check --exclude *pb2.py --extend-exclude packages/raghub-interfaces/src/raghub_interfaces/protos/pb --fix $(GIT_FILES)
 else
 	@echo "No modified/added Python files to format."
 endif
@@ -58,9 +58,8 @@ endif
 .PHONY: fmt-check
 fmt-check: testenv ## Check Python code formatting and style without making changes (only modified/added files)
 ifneq ($(strip $(GIT_FILES)),)
-	$(VENV_BIN)/ruff format --check $(GIT_FILES)
-	$(VENV_BIN)/ruff check --select I $(GIT_FILES)
-	$(VENV_BIN)/ruff check $(GIT_FILES)
+	. $(VENV_BIN)/activate && uv tool run ruff format --check $(GIT_FILES)
+	. $(VENV_BIN)/activate && uv tool run ruff check $(GIT_FILES)
 else
 	@echo "No modified/added Python files to check."
 endif
@@ -71,7 +70,7 @@ pre-commit: fmt-check mypy ## Run formatting and unit tests before committing
 .PHONY: mypy
 mypy: testenv## Run mypy checks (only modified/added files)
 ifneq ($(strip $(GIT_FILES)),)
-	uv tool run mypy --config-file .mypy.ini $(GIT_FILES)
+	. $(VENV_BIN)/activate && uv tool run mypy --config-file .mypy.ini $(GIT_FILES)
 else
 	@echo "No modified/added Python files to type check."
 endif

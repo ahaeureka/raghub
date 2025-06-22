@@ -1,4 +1,5 @@
 from google.api import annotations_pb2 as _annotations_pb2
+from google.protobuf import any_pb2 as _any_pb2
 from protobuf_pydantic_gen import pydantic_pb2 as _pydantic_pb2
 import chat_pb2 as _chat_pb2
 from google.protobuf.internal import containers as _containers
@@ -116,8 +117,8 @@ class RAGDocument(_message.Message):
         KEY_FIELD_NUMBER: _ClassVar[int]
         VALUE_FIELD_NUMBER: _ClassVar[int]
         key: str
-        value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+        value: _any_pb2.Any
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
     CONTENT_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     METADATA_FIELD_NUMBER: _ClassVar[int]
@@ -125,10 +126,10 @@ class RAGDocument(_message.Message):
     SOURCE_FIELD_NUMBER: _ClassVar[int]
     content: str
     title: str
-    metadata: _containers.ScalarMap[str, str]
+    metadata: _containers.MessageMap[str, _any_pb2.Any]
     type: str
     source: str
-    def __init__(self, content: _Optional[str] = ..., title: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ..., type: _Optional[str] = ..., source: _Optional[str] = ...) -> None: ...
+    def __init__(self, content: _Optional[str] = ..., title: _Optional[str] = ..., metadata: _Optional[_Mapping[str, _any_pb2.Any]] = ..., type: _Optional[str] = ..., source: _Optional[str] = ...) -> None: ...
 
 class AddDocumentsRequest(_message.Message):
     __slots__ = ("knowledge_id", "documents")

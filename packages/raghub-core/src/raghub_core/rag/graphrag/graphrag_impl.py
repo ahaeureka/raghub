@@ -1,3 +1,10 @@
+"""
+GraphRAG implementation for RAG (Retrieval-Augmented Generation) using a graph database.
+
+# This implementation is inspired by the DBGPT graphrag module.
+# Original source code: https://github.com/eosphoros-ai/DB-GPT/blob/main/packages/dbgpt-ext/src/dbgpt_ext/storage/knowledge_graph/knowledge_graph.py
+"""
+
 import asyncio
 import json
 from typing import AsyncIterator, Dict, List, Optional
@@ -30,6 +37,7 @@ from raghub_core.utils.misc import compute_mdhash_id, detect_language, duplicate
 class GraphRAGImpl(BaseRAG):
     """
     GraphRAG implementation.
+    Reference:
     """
 
     def __init__(
@@ -437,7 +445,7 @@ class GraphRAGImpl(BaseRAG):
         return similar_entities
 
     async def qa(
-        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None
+        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None, llm: Optional[BaseChat] = None
     ) -> AsyncIterator[QAChatResponse]:
         result = await self._retrieve_query(unique_name, query, top_k)
         lang = detect_language(query)
@@ -470,9 +478,9 @@ class GraphRAGImpl(BaseRAG):
             ).to_string()
 
         logger.debug(f"Prompt for query '{query}': {qa_prompt}")
-        stream = await self.llm.astream(qa_prompt=ChatPromptTemplate.from_template(prompt), input={})
+        llm = llm or self.llm
 
-        async for answer in stream:
+        async for answer in llm.astream(qa_prompt=ChatPromptTemplate.from_template(prompt), input={}):
             ans: ChatResponse = answer
             context = {
                 "context": result.context,

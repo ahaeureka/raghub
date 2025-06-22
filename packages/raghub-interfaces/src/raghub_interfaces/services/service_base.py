@@ -21,4 +21,17 @@ class ServiceBase(metaclass=SingletonRegisterMeta):
         Returns:
             The request ID as a string.
         """
-        return context.invocation_metadata().get("request_id", "unknown")
+        metadata = context.invocation_metadata()
+        request_id = next((value for key, value in metadata if key.lower() == "x-request-id"), None)
+        return request_id
+
+    def get_auth(self, context: grpc.ServicerContext) -> str:
+        """
+        Get the authentication token from the gRPC context.
+        Args:
+            context: The gRPC ServicerContext.
+        Returns:
+            The authentication token as a string.
+        """
+        auth_metadata = context.invocation_metadata()
+        return next((value for key, value in auth_metadata if key.lower() == "authorization"), None)

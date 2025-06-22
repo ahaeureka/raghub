@@ -1,4 +1,4 @@
-from typing import AsyncIterator, Dict, List
+from typing import AsyncIterator, Dict, List, Optional
 
 from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
@@ -147,7 +147,7 @@ class HippoRAG(BaseRAGApp):
         await self.hipporag.init()
 
     async def QA(
-        self, unique_name: str, question: str, retrieve_top_k=5, lang="zh", prompt=None
+        self, unique_name: str, question: str, retrieve_top_k=5, lang="zh", prompt=None, llm: Optional[BaseChat] = None
     ) -> AsyncIterator[QAChatResponse]:
         """
         Performs question answering on the HippoRAG application.
@@ -162,8 +162,12 @@ class HippoRAG(BaseRAGApp):
                 The language of the question. Defaults to "zh".
             prompt : Optional[BasePrompt], optional
                 A custom prompt to use for generating the answer. Defaults to None.
+            llm : Optional[BaseChat], optional
+                An optional LLM instance to use for answering the question. If not provided, the default
         Returns:
             AsyncIterator[QAChatResponse]
             An asynchronous iterator that yields QAChatResponse objects containing the answers and metadata.
         """
-        return await self.hipporag.qa(unique_name, question, retrieve_top_k)
+
+        async for r in self.hipporag.qa(unique_name, question, retrieve_top_k, prompt=prompt, llm=llm):
+            yield r

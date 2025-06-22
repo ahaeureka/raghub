@@ -3733,7 +3733,7 @@ wheels = [
 [[package]]
 name = "protobuf-pydantic-gen"
 version = "0.1.7"
-source = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git?rev=feature%2Ffastapi-grpc#dfdb511d9a6da98a8e98bf25eac24f08d0830517" }
+source = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git?rev=feature%2Ffastapi-grpc#a01fbe55d26d62be81db1460f3fba68b39ca6fe8" }
 dependencies = [
     { name = "annotated-types" },
     { name = "autopep8" },

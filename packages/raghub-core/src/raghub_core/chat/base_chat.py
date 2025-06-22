@@ -1,10 +1,8 @@
 from abc import abstractmethod
 from typing import AsyncIterator, Callable, Dict, Optional, TypeVar
 
-from langchain.prompts import (
-    ChatPromptTemplate,
-)
-from langchain_core.messages import AIMessage
+from langchain.prompts import ChatPromptTemplate
+from langchain_core.messages import AIMessage, AIMessageChunk
 from loguru import logger
 from raghub_core.schemas.chat_response import ChatResponse
 from raghub_core.utils.class_meta import RegsiterMeta
@@ -59,6 +57,18 @@ class BaseChat(metaclass=RegsiterMeta):
         This method can be overridden by subclasses if a different parsing logic is needed.
         """
         logger.debug(f"Default output parser called with output: {output}")
+        return ChatResponse(
+            tokens=output.usage_metadata["total_tokens"] if output.usage_metadata else 0,
+            error=None,
+            content=output.content,
+        )
+
+    def default_streaming_output_parser(self, output: AIMessageChunk) -> ChatResponse:
+        """
+        Default output parser for streaming chat response.
+        This method can be overridden by subclasses if a different parsing logic is needed.
+        """
+        logger.debug(f"Default streaming output parser called with output: {output}")
         return ChatResponse(
             tokens=output.usage_metadata["total_tokens"] if output.usage_metadata else 0,
             error=None,
