@@ -12,6 +12,16 @@ A platform that integrates common RAG algorithms and frameworks with engineering
 
   - [x] HippoRAG
 
+# Features  
+
+- Supports Dify external knowledge base interface  
+
+- Supports both RESTFul API and gRPC services
+
+- Supports offline and online storage solutions
+
+- Compatible with OPENAI SDK for LLM interfaces  
+
 ## Installation and Deployment
 
 ### Source Code Installation

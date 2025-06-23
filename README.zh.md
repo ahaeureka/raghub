@@ -8,7 +8,17 @@
 
   - [x] GraphRAG
 
-  - [x] HippoRAG
+  - [x] HippoRAG  
+
+# 特性  
+
+- 支持Dify外挂知识库接口  
+
+- 同时支持RESTFul API和gRPC服务
+
+- 支持离线存储和在线存储方案
+
+- 支持兼容OPENAI SDK的LLM接口  
 
 # 安装部署
 
