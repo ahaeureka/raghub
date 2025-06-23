@@ -35,4 +35,4 @@ TODO
 
 # RESTFul API && gRPC Server
 
-[接口定义](packages/raghub-interfaces/src/protos/rag.proto)
+[接口定义](https://github.com/ahaeureka/raghub-protos/blob/main/rag.proto)

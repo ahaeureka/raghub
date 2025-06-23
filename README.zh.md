@@ -35,4 +35,4 @@ TODO
 
 ## RESTFul API && gRPC Server
 
-[Interface Definition](packages/raghub-interfaces/src/protos/rag.proto)
+[Interface Definition](https://github.com/ahaeureka/raghub-protos/blob/main/rag.proto)
