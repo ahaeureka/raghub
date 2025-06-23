@@ -17,7 +17,7 @@ A platform that integrates common RAG algorithms and frameworks with engineering
 ### Source Code Installation
 - Clone the code repository
 ```bash
-git clone https://github.com/ahaeureka/raghub.git
+git clone --recurse-submodules https://github.com/ahaeureka/raghub.git
 ```
 
 - Install dependencies

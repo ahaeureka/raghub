@@ -15,7 +15,7 @@
 ### 源码安装
 - 克隆代码仓库
 ```bash
-git clone https://github.com/ahaeureka/raghub.git
+git clone --recurse-submodules https://github.com/ahaeureka/raghub.git
 ```
 
 - 安装依赖
