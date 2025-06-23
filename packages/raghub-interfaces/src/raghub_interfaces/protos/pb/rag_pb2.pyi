@@ -148,3 +148,21 @@ class AddDocumentsResponse(_message.Message):
     error: RetrievalResponseError
     request_id: str
     def __init__(self, documents: _Optional[_Iterable[_Union[RAGDocument, _Mapping]]] = ..., error: _Optional[_Union[RetrievalResponseError, _Mapping]] = ..., request_id: _Optional[str] = ...) -> None: ...
+
+class DeleteDocumentsRequest(_message.Message):
+    __slots__ = ("knowledge_id", "document_ids")
+    KNOWLEDGE_ID_FIELD_NUMBER: _ClassVar[int]
+    DOCUMENT_IDS_FIELD_NUMBER: _ClassVar[int]
+    knowledge_id: str
+    document_ids: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, knowledge_id: _Optional[str] = ..., document_ids: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class DeleteDocumentsResponse(_message.Message):
+    __slots__ = ("deleted_ids", "error", "request_id")
+    DELETED_IDS_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
+    deleted_ids: _containers.RepeatedScalarFieldContainer[str]
+    error: RetrievalResponseError
+    request_id: str
+    def __init__(self, deleted_ids: _Optional[_Iterable[str]] = ..., error: _Optional[_Union[RetrievalResponseError, _Mapping]] = ..., request_id: _Optional[str] = ...) -> None: ...

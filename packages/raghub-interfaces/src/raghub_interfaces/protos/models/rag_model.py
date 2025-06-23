@@ -247,3 +247,36 @@ class AddDocumentsResponse(BaseModel):
     @classmethod
     def from_protobuf(cls: Type[PydanticModel], src: _message.Message) -> PydanticModel:
         return protobuf2model(cls, src)
+
+
+class DeleteDocumentsRequest(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    knowledge_id: str = _Field(description="knowledge’s unique ID")
+    document_ids: List[str] = _Field(description="List of document IDs to be deleted")
+
+    def to_protobuf(self) -> _message.Message:
+        _proto = pool.FindMessageTypeByName("raghub_interfaces.DeleteDocumentsRequest")
+        _cls: Type[_message.Message] = message_factory.GetMessageClass(_proto)
+        return model2protobuf(self, _cls())
+
+    @classmethod
+    def from_protobuf(cls: Type[PydanticModel], src: _message.Message) -> PydanticModel:
+        return protobuf2model(cls, src)
+
+
+class DeleteDocumentsResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    deleted_ids: List[str] = _Field(description="List of document IDs that were successfully deleted")
+    error: Optional[RetrievalResponseError] = _Field(description="Error information")
+    request_id: Optional[str] = _Field(description="Request ID for tracking", default="")
+
+    def to_protobuf(self) -> _message.Message:
+        _proto = pool.FindMessageTypeByName("raghub_interfaces.DeleteDocumentsResponse")
+        _cls: Type[_message.Message] = message_factory.GetMessageClass(_proto)
+        return model2protobuf(self, _cls())
+
+    @classmethod
+    def from_protobuf(cls: Type[PydanticModel], src: _message.Message) -> PydanticModel:
+        return protobuf2model(cls, src)

@@ -35,6 +35,11 @@ class RAGServiceStub(object):
                 request_serializer=rag__pb2.AddDocumentsRequest.SerializeToString,
                 response_deserializer=rag__pb2.AddDocumentsResponse.FromString,
                 )
+        self.DeleteDocuments = channel.unary_unary(
+                '/raghub_interfaces.RAGService/DeleteDocuments',
+                request_serializer=rag__pb2.DeleteDocumentsRequest.SerializeToString,
+                response_deserializer=rag__pb2.DeleteDocumentsResponse.FromString,
+                )
 
 
 class RAGServiceServicer(object):
@@ -64,6 +69,12 @@ class RAGServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def DeleteDocuments(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_RAGServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -86,6 +97,11 @@ def add_RAGServiceServicer_to_server(servicer, server):
                     servicer.AddDocuments,
                     request_deserializer=rag__pb2.AddDocumentsRequest.FromString,
                     response_serializer=rag__pb2.AddDocumentsResponse.SerializeToString,
+            ),
+            'DeleteDocuments': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteDocuments,
+                    request_deserializer=rag__pb2.DeleteDocumentsRequest.FromString,
+                    response_serializer=rag__pb2.DeleteDocumentsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -162,5 +178,22 @@ class RAGService(object):
         return grpc.experimental.unary_unary(request, target, '/raghub_interfaces.RAGService/AddDocuments',
             rag__pb2.AddDocumentsRequest.SerializeToString,
             rag__pb2.AddDocumentsResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def DeleteDocuments(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/raghub_interfaces.RAGService/DeleteDocuments',
+            rag__pb2.DeleteDocumentsRequest.SerializeToString,
+            rag__pb2.DeleteDocumentsResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

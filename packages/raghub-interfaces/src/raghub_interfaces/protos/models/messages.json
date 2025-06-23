@@ -711,5 +711,55 @@
             },
             "description": "Request ID for tracking"
         }
+    },
+    "DeleteDocumentsRequest": {
+        "knowledge_id": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "knowledge’s unique ID"
+            },
+            "description": "knowledge’s unique ID"
+        },
+        "document_ids": {
+            "type": "str",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "List of document IDs to be deleted"
+            },
+            "description": "List of document IDs to be deleted"
+        }
+    },
+    "DeleteDocumentsResponse": {
+        "deleted_ids": {
+            "type": "str",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "List of document IDs that were successfully deleted"
+            },
+            "description": "List of document IDs that were successfully deleted"
+        },
+        "error": {
+            "type": "RetrievalResponseError",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "Error information"
+            },
+            "description": "Error information"
+        },
+        "request_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "Request ID for tracking",
+                "default": ""
+            },
+            "description": "Request ID for tracking"
+        }
     }
 }

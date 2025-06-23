@@ -56,7 +56,7 @@
             "output_type": ".raghub_interfaces.AddDocumentsResponse",
             "options": {
                 "[google.api.http]": {
-                    "post": "/v1/rag/documents/add",
+                    "post": "/v1/rag/documents",
                     "body": "*"
                 }
             },
@@ -64,7 +64,24 @@
             "method_full_name": "/raghub_interfaces.RAGService/AddDocuments",
             "http": {
                 "method": "POST",
-                "path": "/v1/rag/documents/add",
+                "path": "/v1/rag/documents",
+                "body": "*"
+            }
+        },
+        "DeleteDocuments": {
+            "input_type": ".raghub_interfaces.DeleteDocumentsRequest",
+            "output_type": ".raghub_interfaces.DeleteDocumentsResponse",
+            "options": {
+                "[google.api.http]": {
+                    "delete": "/v1/rag/documents",
+                    "body": "*"
+                }
+            },
+            "streaming_type": "unary",
+            "method_full_name": "/raghub_interfaces.RAGService/DeleteDocuments",
+            "http": {
+                "method": "DELETE",
+                "path": "/v1/rag/documents",
                 "body": "*"
             }
         }

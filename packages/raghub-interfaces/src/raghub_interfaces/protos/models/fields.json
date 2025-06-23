@@ -111,5 +111,14 @@
         "documents": "List of documents that were added",
         "error": "Error information",
         "request_id": "Request ID for tracking"
+    },
+    "DeleteDocumentsRequest": {
+        "knowledge_id": "knowledge’s unique ID",
+        "document_ids": "List of document IDs to be deleted"
+    },
+    "DeleteDocumentsResponse": {
+        "deleted_ids": "List of document IDs that were successfully deleted",
+        "error": "Error information",
+        "request_id": "Request ID for tracking"
     }
 }

@@ -74,6 +74,14 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
         response = rag_pb2.CreateIndexResponse(unique_name=request.unique_name)
         return response
 
+    async def DeleteDocuments(
+        self, request: rag_pb2.DeleteDocumentsRequest, context
+    ) -> rag_pb2.DeleteDocumentsResponse:
+        """DeleteDocuments method implementation."""
+        await self.app.delete(unique_name=request.knowledge_id, docs_to_delete=request.document_ids)
+        response = rag_pb2.DeleteDocumentsResponse(deleted_ids=request.document_ids)
+        return response
+
     async def Chat(
         self, request: chat_pb2.CreateChatCompletionRequest, context: grpc.ServicerContext
     ) -> AsyncIterator[chat_pb2.CreateChatCompletionResponse]:
