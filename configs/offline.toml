@@ -1,0 +1,56 @@
+app_name = "RAGHub"
+app_version = "0.1.0"
+app_description = "RAGHub Application"
+
+[logger]
+log_level = "DEBUG"
+log_dir = "/app/output/raghub/logs"
+
+[rag.llm]
+model = "${env:LLM_MODEL_NAME:-qwen-plus}"
+base_url = "${env:OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
+api_key = "${env:OPENAI_API_KEY}"
+timeout = 60
+provider = "${env:EMBEDDING_PROVIDER:-openai-proxy}"
+temperature = 0.3
+
+[rag.embbeding]
+model = "${env:EMBEDDING_MODEL_NAME:-text-embedding-v3}"
+provider = "${env:EMBEDDING_PROVIDER:-openai-proxy-embedding}"
+batch_size = 5
+embedding_key_prefix = "embedding"
+base_url = "${env:OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
+api_key = "${env:OPENAI_API_KEY}"
+
+[rag]
+lang = "en"
+
+[vector_storage]
+provider = "chromadb"
+collection_name = "default_collection"
+persist_directory = "/app/output/.raghub/cache/chroma_db"
+
+[graph]
+provider = "igraph"
+graph_path = "/app/output/.raghub/storage/graphs"
+
+[database]
+provider = "sqlite"
+db_url = "sqlite:////app/output/.raghub/app_example.db"
+
+[hipporag]
+synonymy_edge_topk = 2047
+synonymy_edge_query_batch_size = 1000
+synonymy_edge_key_batch_size = 1000
+synonymy_edge_sim_threshold = 0.8
+passage_node_weight = 0.05
+linking_top_k = 10
+embedding_prefix = "hipporag_embeddings"
+dspy_file_path = "/app/configs/filter_llama3.3-70B-Instruct.json"
+
+[cache]
+provider = "disk_cache"
+cache_dir = "/app/output/.raghub/cache"
+
+
+
