@@ -1,38 +1,40 @@
+[English](README.md) | [中文](README.zh.md)  
+
 # RAGHUB
 
-集合常见RAG算法和框架的工程化实现，提供RESTful API接口和gRPC服务，支持离线存储和在线存储方案。
+A platform that integrates common RAG algorithms and frameworks with engineering implementations, providing RESTful API interfaces and gRPC services. It supports both offline and online storage solutions.
 
-# 已经实现的RAG算法
+## Implemented RAG Algorithms
 
-- RAG算法
+- RAG Algorithms
 
   - [x] GraphRAG
 
   - [x] HippoRAG
 
-# 安装部署
+## Installation and Deployment
 
-### 源码安装
-- 克隆代码仓库
+### Source Code Installation
+- Clone the code repository
 ```bash
 git clone https://github.com/ahaeureka/raghub.git
 ```
 
-- 安装依赖
+- Install dependencies
 ```bash
 cd raghub && uv sync -v --active --all-packages --default-index https://mirrors.aliyun.com/pypi/simple/ --extra online --index-strategy unsafe-best-match --prerelease=allow --no-build-isolation
 ```
 
-- 配置依赖
-修改 `configs/offline.toml`
+- Configure dependencies
+Modify `configs/offline.toml`
 
-- 启动服务
+- Start the service
 ```bash
 cd packages/raghub-interfaces/src/raghub_interfaces && uv run raghub.py start server -c /app/configs/offline.toml
 ```
-### Docker安装
+### Docker Installation
 TODO
 
-# RESTFul API && gRPC Server
+## RESTFul API && gRPC Server
 
-[接口定义](https://github.com/ahaeureka/raghub-protos/blob/main/rag.proto)
+[Interface Definition](https://github.com/ahaeureka/raghub-protos/blob/main/rag.proto)
