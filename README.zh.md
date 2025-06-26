@@ -41,7 +41,12 @@ cd raghub && uv sync -v --active --all-packages --default-index https://mirrors.
 cd packages/raghub-interfaces/src/raghub_interfaces && uv run raghub.py start server -c /app/configs/offline.toml
 ```
 ### Docker安装
+
 TODO
+
+### 配置
+
+[配置文档](docs/config.zh.md)
 
 # RESTFul API && gRPC Server
 

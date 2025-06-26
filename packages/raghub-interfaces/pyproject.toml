@@ -25,7 +25,7 @@ default = true
 raghub-ext = { workspace = true }
 raghub-app = { workspace = true }
 raghub-core = { workspace =true }
-protobuf-pydantic-gen = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git", rev = "feature/fastapi-grpc" }
+protobuf-pydantic-gen = { git = "https://github.com/begonia-org/pydantic-protobuf-gen.git", rev = "master" }
 [project.scripts]
 raghub = 'raghub_interfaces.raghub:main'
 [build-system]

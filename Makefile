@@ -22,6 +22,7 @@ $(VENV)/bin/activate: $(VENV)/.venv-timestamp
 $(VENV)/.venv-timestamp: uv.lock
 	# Create new virtual environment if setup.py has changed
 	uv venv --seed --python 3.11 $(VENV)
+	cp .devcontainer/project.pth $(VENV)/lib/python3.11/site-packages
 	touch $(VENV)/.venv-timestamp
 
 testenv: $(VENV)/.testenv
@@ -64,8 +65,12 @@ else
 	@echo "No modified/added Python files to check."
 endif
 
+.PHONY: docs
+docs:
+	python3 docs/make.py
+
 .PHONY: pre-commit
-pre-commit: fmt-check mypy ## Run formatting and unit tests before committing
+pre-commit: fmt fmt-check mypy docs ## Run formatting and unit tests before committing
 
 .PHONY: mypy
 mypy: testenv## Run mypy checks (only modified/added files)

@@ -41,6 +41,7 @@ else
   # Generate basic .zshrc if no custom configuration exists
   cat << EOF >> ~/.zshrc
 export ZSH="\$HOME/.oh-my-zsh"
+HISTFILE="/app/.devcontainer/.zsh_history"
 ZSH_THEME="robbyrussell"
 plugins=(git zsh-autosuggestions zsh-syntax-highlighting autojump)
 source \$ZSH/oh-my-zsh.sh

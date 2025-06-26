@@ -35,15 +35,21 @@ git clone --recurse-submodules https://github.com/ahaeureka/raghub.git
 cd raghub && uv sync -v --active --all-packages --default-index https://mirrors.aliyun.com/pypi/simple/ --extra online --index-strategy unsafe-best-match --prerelease=allow --no-build-isolation
 ```
 
-- Configure dependencies
+- Configure dependencies  
+
 Modify `configs/offline.toml`
 
 - Start the service
 ```bash
 cd packages/raghub-interfaces/src/raghub_interfaces && uv run raghub.py start server -c /app/configs/offline.toml
 ```
-### Docker Installation
+### Docker Installation  
+
 TODO
+
+### Configuration
+
+[Configuration docs](docs/config.md)
 
 ## RESTFul API && gRPC Server
 

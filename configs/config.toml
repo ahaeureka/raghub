@@ -1,0 +1,252 @@
+# InerfaceConfig Configuration File
+# Auto-generated on 2025-06-26 05:42:32
+# Description: Configuration settings
+
+# Root Level Configuration
+
+# Application Name
+app_name = "RAGHub"
+
+# Application Version
+app_version = "0.1.0"
+
+# Application Description
+app_description = "RAGHub Application"
+
+# Logger Configuration
+
+[logger]
+
+# Log Level
+log_level = "DEBUG"
+
+# Log File Path
+log_dir = "logs"
+
+# RAG Configuration
+
+[rag]
+
+# Language for the RAG system
+lang = "en"
+
+# LLM Configuration
+
+[rag.llm]
+
+# OpenAI API Secret Key
+# api_key = # Required field, no default value
+
+# OpenAI API Base URL
+# base_url = # Required field, no default value
+
+# OpenAI Model Name
+model = "gpt-3.5-turbo"
+
+# OpenAI API Timeout in seconds
+timeout = 60
+
+# Provider of the embedding model
+provider = "openai-proxy"
+
+# Temperature for the OpenAI model
+temperature = 0.3
+
+# Embedding Configuration
+
+[rag.embbeding]
+
+# OpenAI API Secret Key
+# api_key = # Required field, no default value
+
+# OpenAI API Base URL
+# base_url = # Required field, no default value
+
+# OpenAI Model Name
+model = "gpt-3.5-turbo"
+
+# OpenAI API Timeout in seconds
+timeout = 60
+
+# Provider of the embedding model
+provider = "openai-proxy-embedding"
+
+# Temperature for the OpenAI model
+temperature = 0.3
+
+# Batch size for embedding
+batch_size = 32
+
+# Number of dimensions for the embedding
+# n_dims = # Required field, no default value
+
+# Prefix for the embedding key
+embedding_key_prefix = "embedding"
+
+# Vector Storage Configuration
+
+[vector_storage]
+
+# Vector storage provider
+provider = "chromadb"
+
+# Name of the collection in the vector storage
+collection_name = "default_collection"
+
+# Directory to persist the vector storage
+persist_directory = "/app/cache/chroma_db"
+
+# Host for the vector storage
+host = "localhost"
+
+# Port for the vector storage
+port = 8000
+
+# Username for vector storage authentication
+# username = # Required field, no default value
+
+# Password for vector storage authentication
+# password = # Required field, no default value
+
+# Token for vector storage authentication
+# token = # Required field, no default value
+
+# Prefix for the embedding key
+embedding_key_prefix = "embedding"
+
+# Graph Configuration
+
+[graph]
+
+# Graph storage provider
+provider = "igraph"
+
+# Path to the graph file
+graph_path = "/app/storage/graphs/default_graph.pkl"
+
+# Graph storage URL
+url = "http://localhost:8000"
+
+# Username for graph storage authentication
+# username = # Required field, no default value
+
+# Password for graph storage authentication
+# password = # Required field, no default value
+
+# Database name for graph storage
+# database = # Required field, no default value
+
+# Database Configuration
+
+[database]
+
+# Database Provider
+provider = "sqlite"
+
+# Database URL
+db_url = "sqlite:///app.db"
+
+# HippoRAG Configuration
+
+[hipporag]
+
+# Number of top-k synonyms to consider for each node
+synonymy_edge_topk = 2047
+
+# Batch size for query embeddings during synonymy edge construction
+synonymy_edge_query_batch_size = 1000
+
+# Batch size for key embeddings during synonymy edge construction
+synonymy_edge_key_batch_size = 1000
+
+# Similarity threshold for synonymy edges
+synonymy_edge_sim_threshold = 0.8
+
+# Weight of passage nodes in the graph
+passage_node_weight = 0.05
+
+# Number of top-k documents to link to each node
+linking_top_k = 10
+
+# Prefix for embedding files
+embedding_prefix = "entity_embeddings"
+
+# Path to the dspy file
+dspy_file_path = "/app/configs/filter_llama3.3-70B-Instruct.json"
+
+# Storage provider for HippoRAG
+storage_provider = "hipporag_storage_local"
+
+# Cache Configuration
+
+[cache]
+
+# Cache Provider
+provider = "memory"
+
+# Cache Directory
+cache_dir = "/app/cache"
+
+# Cache Host
+host = "localhost"
+
+# Cache Port
+port = 6379
+
+# Cache Authentication
+# auth = # Required field, no default value
+
+# Search Engine Configuration
+
+[search_engine]
+
+# Search Engine Provider
+provider = "elasticsearch"
+
+# Search Engine Host
+host = "localhost"
+
+# Search Engine Port
+port = 9200
+
+# Search Engine Index Name
+index_name_prefix = "raghub_index"
+
+# Search Engine Username
+username = "elastic"
+
+# Search Engine Password
+# password = # Required field, no default value
+
+# Use SSL for Search Engine
+use_ssl = false
+
+# Verify SSL certificates for Search Engine
+verify_certs = false
+
+# GraphRAG Configuration
+
+[graphrag]
+
+# DAO provider for GraphRAG
+dao_provider = "default_graph_rag_dao"
+
+# Interfaces Configuration
+
+[interfaces]
+
+# RAG Provider
+rag_provider = "hipporag_app"
+
+# Server Configuration
+
+[interfaces.server]
+
+# Name of the RAGHub server
+name = "RAGHub Server"
+
+# Address of the RAGHub server
+address = "127.0.0.1"
+
+# Port of the RAGHub server
+port = 8000
