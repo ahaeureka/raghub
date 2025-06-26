@@ -211,3 +211,5 @@ cache/
 !examples/graphrag/graphrag.png
 online.toml
 .vscode/launch.json
+.zsh_history
+.devcontainer/.zsh_history
