@@ -31,5 +31,8 @@
     "[python]": {
         "editor.defaultFormatter": "charliermarsh.ruff"
     },
-    "editor.formatOnSave": true
-  }
+    "editor.formatOnSave": true,
+    "[dockerfile]": {
+        "editor.defaultFormatter": "ms-azuretools.vscode-containers"
+    }
+}

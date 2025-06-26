@@ -1,5 +1,5 @@
 **InerfaceConfig Configuration File Documentation**  
-**Auto-generated on 2025-06-26 05:42:32**  
+**Auto-generated on 2025-06-26 09:26:42**  
 **Description: Configuration settings** 
 
 # Root Level Configuration
@@ -74,10 +74,10 @@
 |---------------|------|----------|-------------|---------|
 | provider | str | true | Graph storage provider | "igraph" |
 | graph_path | str | false | Path to the graph file | "/app/storage/graphs/default_graph.pkl" |
-| url | str | false | Graph storage URL | "http://localhost:8000" |
-| username | str | false | Username for graph storage authentication | null |
-| password | str | false | Password for graph storage authentication | null |
-| database | str | false | Database name for graph storage | null |
+| url | str | false | Graph databse URL like Neo4j | "http://localhost:8000" |
+| username | str | false | Username for graph database authentication | null |
+| password | str | false | Password for graph database authentication | null |
+| database | str | false | Database name for graph database | null |
 
 ## [database]
 **Configuration for database**

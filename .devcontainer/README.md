@@ -1,5 +1,5 @@
 # Developing inside a Container
-Use VS Code's ​Dev Container extension to build a containerized development environment. Leverage the eosphorosai/ahaeureka:latest image as the development environment to avoid repeated dependency installations and improve development efficiency.  
+Use VS Code's ​Dev Container extension to build a containerized development environment. Leverage the eosphorosai/raghub:latest image as the development environment to avoid repeated dependency installations and improve development efficiency.  
 NOTE: **Compatible with Linux and Windows Subsystem for Linux (WSL) environments only.**
 # Setup
 

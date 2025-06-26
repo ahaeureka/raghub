@@ -47,3 +47,5 @@ RUN pip config set global.index-url $PIP_INDEX_URL && \
     extras=$(echo $EXTRAS | tr ',' '\n' | while read extra; do echo "--extra $extra"; done | tr '\n' ' ') && \
     uv sync -v --active --all-packages --default-index $PIP_INDEX_URL --index-strategy unsafe-best-match $extras --prerelease=allow --no-build-isolation && \
     echo "/app" >> /opt/.uv.venv/lib/python${PYTHON_VERSION}/site-packages/.pth
+
+ENTRYPOINT [ "raghub","start","server","-c","/app/configs/config.toml" ]

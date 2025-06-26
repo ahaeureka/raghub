@@ -1,5 +1,5 @@
 # InerfaceConfig Configuration File
-# Auto-generated on 2025-06-26 05:42:32
+# Auto-generated on 2025-06-26 09:26:42
 # Description: Configuration settings
 
 # Root Level Configuration
@@ -124,16 +124,16 @@ provider = "igraph"
 # Path to the graph file
 graph_path = "/app/storage/graphs/default_graph.pkl"
 
-# Graph storage URL
+# Graph databse URL like Neo4j
 url = "http://localhost:8000"
 
-# Username for graph storage authentication
+# Username for graph database authentication
 # username = # Required field, no default value
 
-# Password for graph storage authentication
+# Password for graph database authentication
 # password = # Required field, no default value
 
-# Database name for graph storage
+# Database name for graph database
 # database = # Required field, no default value
 
 # Database Configuration

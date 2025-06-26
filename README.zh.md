@@ -38,11 +38,20 @@ cd raghub && uv sync -v --active --all-packages --default-index https://mirrors.
 
 - 启动服务
 ```bash
-cd packages/raghub-interfaces/src/raghub_interfaces && uv run raghub.py start server -c /app/configs/offline.toml
+raghub start server -c /app/configs/offline.toml
 ```
 ### Docker安装
 
-TODO
+#### 构建Docker镜像
+
+```bash
+docker build -t raghub:latest .
+```
+#### 运行Docker容器
+
+```bash
+docker run -d --name raghub -p 8000:8000 -v /path/to/configs/config.toml:/app/configs/config.toml raghub:latest
+```
 
 ### 配置
 

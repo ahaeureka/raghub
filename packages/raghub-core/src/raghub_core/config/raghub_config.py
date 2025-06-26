@@ -161,7 +161,8 @@ class VectorStorageConfig(BaseParameters):
 
 class GraphStorageConfig(BaseParameters):
     """
-    配置类，用于存储图存储的参数和设置.
+    Graph storage configuration class for RAGHub.
+    This class defines the parameters for configuring graph storage,
     """
 
     provider: str = BaseParameters.field(
@@ -176,29 +177,30 @@ class GraphStorageConfig(BaseParameters):
     )
     url: Optional[str] = BaseParameters.field(
         default="http://localhost:8000",
-        description="Graph storage URL",
+        description="Graph databse URL like Neo4j",
         tags=["graph_storage"],
     )
     username: Optional[str] = BaseParameters.field(
         default=None,
-        description="Username for graph storage authentication",
+        description="Username for graph database authentication",
         tags=["graph_storage"],
     )
     password: Optional[str] = BaseParameters.field(
         default=None,
-        description="Password for graph storage authentication",
+        description="Password for graph database authentication",
         tags=["graph_storage"],
     )
     database: Optional[str] = BaseParameters.field(
         default=None,
-        description="Database name for graph storage",
+        description="Database name for graph database",
         tags=["graph_storage"],
     )
 
 
 class RAGHubConfig(BaseParameters):
     """
-    配置类，用于存储应用程序的参数和设置.
+    RAGHub Configuration Class
+    This class defines the configuration parameters for the RAGHub application.
     """
 
     # 应用程序名称
@@ -240,7 +242,6 @@ class RAGHubConfig(BaseParameters):
         description="Graph Configuration",
         tags=["graph"],
     )
-    # 其他配置项...
 
 
 class SearchEngineConfig(BaseParameters):

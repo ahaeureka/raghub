@@ -41,11 +41,22 @@ Modify `configs/offline.toml`
 
 - Start the service
 ```bash
-cd packages/raghub-interfaces/src/raghub_interfaces && uv run raghub.py start server -c /app/configs/offline.toml
+raghub start server -c /app/configs/offline.toml
 ```
 ### Docker Installation  
 
-TODO
+#### Build Docker Image
+
+```bash
+docker build -t raghub:latest .
+```
+
+#### Run Docker Container
+
+```bash
+docker run -d --name raghub -p 8000:8000 -v /path/to/configs/config.toml:/app/configs/config.toml raghub:latest
+
+```
 
 ### Configuration
 
