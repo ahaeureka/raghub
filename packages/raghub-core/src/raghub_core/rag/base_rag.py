@@ -1,13 +1,16 @@
 from abc import abstractmethod
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
+from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
+from raghub_core.rerank.base_rerank import BaseRerank
 from raghub_core.schemas.chat_response import QAChatResponse
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_model import GraphCommunity, GraphEdge, GraphModel, GraphVertex, QueryIndentationModel
 from raghub_core.schemas.hipporag_models import OpenIEInfo
 from raghub_core.schemas.rag_model import RetrieveResultItem
 from raghub_core.utils.class_meta import SingletonRegisterMeta
+from raghub_core.utils.misc import duplicate_filter
 
 
 class BaseRAG(metaclass=SingletonRegisterMeta):
@@ -72,7 +75,13 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
 
     @abstractmethod
     async def qa(
-        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None, llm: Optional[BaseChat] = None
+        self,
+        unique_name: str,
+        query: str,
+        top_k: int = 5,
+        prompt: Optional[str] = None,
+        llm: Optional[BaseChat] = None,
+        filter: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[QAChatResponse]:
         """
         Perform question answering on the RAG system.
@@ -82,10 +91,86 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
             top_k (int): Number of top results to retrieve.
             prompt (Optional[str]): Optional prompt for the LLM.
             llm (Optional[BaseChat]): Optional LLM instance to use for generating answers.
+            filter (Optional[Dict[str, Any]]): Optional filter criteria for retrieval.
         Returns:
             AsyncIterator[QAChatResponse]: Iterator of QAChatResponse containing the answers and their scores.
         """
         raise NotImplementedError("This method 'qa' should be overridden by subclasses.")
+
+    @abstractmethod
+    async def embbedding_retrieve(
+        self,
+        unique_name: str,
+        queries: List[str],
+        filter: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, List[RetrieveResultItem]]:
+        """
+        Retrieve documents based on embedding similarity.
+        Args:
+            unique_name (str): Name of the index to use for retrieval.
+            queries (List[str]): List of query strings.
+            filter (Optional[Dict[str, Any]]): Optional filter criteria for retrieval.
+        Returns:
+            Dict[str, List[RetrieveResultItem]]: Dictionary with queries as keys and lists of Document as values.
+        """
+        raise NotImplementedError("This method 'embbedding_retrieve' should be overridden by subclasses.")
+
+    async def hybrid_retrieve(
+        self,
+        unique_name: str,
+        queries: List[str],
+        reranker: BaseRerank,
+        similarity_threshold=0.7,
+        filter: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, List[RetrieveResultItem]]:
+        """
+        Hybrid retrieval method that combines graph-based and keyword-based retrieval.
+        Args:
+            unique_name (str): Name of the index to use for retrieval.
+            queries (List[str]): List of query strings.
+            reranker (BaseRerank): Reranker instance to use for reranking results.
+            similarity_threshold (float): Threshold for similarity scores to consider a document relevant.
+            filter (Optional[Dict[str, Any]]): Optional filter criteria for retrieval.
+        Returns:
+            Dict[str, List[RetrieveResultItem]]: Dictionary with queries as keys and
+            lists of RetrieveResultItem as values.
+        """
+        graph_retrieval_result: Dict[str, List[RetrieveResultItem]] = await self.retrieve(unique_name, queries, 10)
+        embedding_retrieval_results: Dict[str, List[RetrieveResultItem]] = await self.embbedding_retrieve(
+            unique_name, queries, filter
+        )
+        logger.debug(f"Graph retrieval results: {graph_retrieval_result}")
+        logger.debug(f"Embedding retrieval results: {embedding_retrieval_results}")
+
+        hybrid_results: Dict[str, RetrieveResultItem] = {}
+        query_to_docs: Dict[str, List[Document]] = {}
+        for query in queries:
+            query_to_docs[query] = [item.doc for item in graph_retrieval_result[query]] + [
+                item.doc for item in embedding_retrieval_results[query]
+            ]
+            query_to_docs[query] = duplicate_filter(query_to_docs[query])
+            rerank_to_docs = await reranker.rerank(query, query_to_docs[query])
+            rerank_docs = [
+                Document(
+                    content=doc.content,
+                    summary=doc.summary,
+                    uid=doc.uid,
+                    metadata=doc.metadata,
+                    embedding=doc.embedding,
+                )
+                for doc, score in rerank_to_docs.items()
+                if score >= similarity_threshold
+            ]
+            hybrid_results[query] = [
+                RetrieveResultItem(
+                    doc=doc,
+                    query=query,
+                    score=rerank_to_docs[doc.uid],
+                    metadata=graph_retrieval_result[query][0].metadata if graph_retrieval_result[query] else {},
+                )
+                for doc in rerank_docs
+            ]
+        return hybrid_results
 
 
 class BaseGraphRAGDAO(metaclass=SingletonRegisterMeta):

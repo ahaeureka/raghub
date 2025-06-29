@@ -3,6 +3,7 @@ from typing import List, Optional
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from langchain_core.runnables.config import run_in_executor
 from raghub_core.embedding.base_embedding import BaseEmbedding
 
@@ -21,7 +22,7 @@ class LocalEmbedding(BaseEmbedding):
 
 
 class SentenceTransformersEmbedding(LocalEmbedding):
-    name = "sentence_transformers"
+    name = "sentence_transformers_embbeding"
 
     # def __init__(self, models_dir: str, model_name: str, batch_size: int = 32):
     #     super().__init__()
@@ -45,12 +46,62 @@ class SentenceTransformersEmbedding(LocalEmbedding):
 
         return normalize(embeddings[:, : self._n_dims])
 
-    def encode_queries(self, query: str) -> np.ndarray:
+    def encode_query(self, query: str) -> np.ndarray:
         return self.encode([query])[0]
+
+    async def aencode(self, texts: List[str], instruction: Optional[str] = None) -> np.ndarray:
+        await run_in_executor(None, self.encode, texts, instruction)
+
+    async def aencode_query(self, text: str, instruction: Optional[str] = None) -> np.ndarray:
+        results = await run_in_executor(None, self.encode_query, text, instruction)
+        return np.array(results.tolist()[0])
+
+
+class TransformersEmbedding(LocalEmbedding):
+    name = "transformers-embedding"
+
+    def _load_model(self):
+        from transformers import AutoModel, AutoTokenizer
+
+        self._model = AutoModel.from_pretrained(self._model_name_or_path)
+        self._tokenizer = AutoTokenizer.from_pretrained(self._model_name_or_path)
+        self._task = "Given a web search query, retrieve relevant passages that answer the query"
+
+        return self._model
+
+    def last_token_pool(self, last_hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+        left_padding = attention_mask[:, -1].sum() == attention_mask.shape[0]
+        if left_padding:
+            return last_hidden_states[:, -1]
+        else:
+            sequence_lengths = attention_mask.sum(dim=1) - 1
+            batch_size = last_hidden_states.shape[0]
+            return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
+
+    def encode(self, texts: List[str], instruction: Optional[str] = None) -> np.ndarray:
+        inputs = self._tokenizer(texts, return_tensors="pt", padding=True, truncation=True).to(self._model.device)
+
+        with torch.no_grad():
+            outputs = self._model(**inputs, output_hidden_states=True)
+            embeddings = self.last_token_pool(outputs.last_hidden_state, inputs["attention_mask"])
+            return F.normalize(embeddings, p=2, dim=1).cpu().numpy()
+
+    def get_detailed_instruct(self, task_description: str, query: str) -> str:
+        return f"Instruct: {task_description}\nQuery:{query}"
+
+    def encode_query(self, text: str, instruction: Optional[str] = None) -> np.ndarray:
+        return self.encode([text])[0]
+
+    async def aencode(self, texts: List[str], instruction: Optional[str] = None) -> np.ndarray:
+        await run_in_executor(None, self.encode, texts, instruction)
+
+    async def aencode_query(self, text: str, instruction: Optional[str] = None) -> np.ndarray:
+        results = await run_in_executor(None, self.encode_query, text, instruction)
+        return np.array(results.tolist()[0])
 
 
 class BGEEmbedding(LocalEmbedding):
-    name = "beg"
+    name = "beg-embedding"
 
     def _load_model(self):
         from FlagEmbedding import FlagModel
@@ -93,3 +144,21 @@ class BGEEmbedding(LocalEmbedding):
                 ).tolist()
             )
         return np.array(ress)
+
+
+if __name__ == "__main__":
+    # Example usage
+    embedding_model = SentenceTransformersEmbedding(model_name_or_path="Qwen/Qwen3-Embedding-0.6B")
+    texts = ["Hello world", "This is a test"]
+    embeddings = embedding_model.encode(texts)
+    print(embeddings.tolist())
+    query_embedding = embedding_model.encode_query("Hello world")
+    print(query_embedding.tolist())
+
+    # Example usage for TransformersEmbedding
+    transformers_embedding_model = TransformersEmbedding(model_name_or_path="Qwen/Qwen3-Embedding-0.6B")
+    texts = ["Hello world", "This is a test"]
+    embeddings = transformers_embedding_model.encode(texts)
+    print(embeddings.tolist())
+    query_embedding = transformers_embedding_model.encode_query("Hello world")
+    print(query_embedding.tolist())

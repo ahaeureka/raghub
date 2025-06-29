@@ -7,7 +7,7 @@ GraphRAG implementation for RAG (Retrieval-Augmented Generation) using a graph d
 
 import asyncio
 import json
-from typing import AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
@@ -29,6 +29,7 @@ from raghub_core.schemas.graph_model import (
     RelationType,
 )
 from raghub_core.schemas.keywords_model import KeywordsOperatorOutputModel
+from raghub_core.schemas.rag_model import RetrieveResultItem
 from raghub_core.schemas.summarize_model import SummarizeOperatorOutputModel
 from raghub_core.utils.graph.graph_helper import GraphHelper
 from raghub_core.utils.misc import compute_mdhash_id, detect_language, duplicate_filter
@@ -445,7 +446,13 @@ class GraphRAGImpl(BaseRAG):
         return similar_entities
 
     async def qa(
-        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None, llm: Optional[BaseChat] = None
+        self,
+        unique_name: str,
+        query: str,
+        top_k: int = 5,
+        prompt: Optional[str] = None,
+        llm: Optional[BaseChat] = None,
+        filter: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[QAChatResponse]:
         result = await self._retrieve_query(unique_name, query, top_k)
         lang = detect_language(query)
@@ -460,6 +467,16 @@ class GraphRAGImpl(BaseRAG):
         from langchain.prompts import ChatPromptTemplate
 
         shuold_container_vars = ["question", "context", "knowledge_graph", "knowledge_graph_for_doc"]
+        embbedding_retrieve_result = await self.embbedding_retrieve(unique_name, [query], filter=filter)
+        embbedding_retrieve_result_items = embbedding_retrieve_result.get(query, [])
+        if embbedding_retrieve_result_items:
+            result.docs.extend(
+                [
+                    doc.document
+                    for doc in embbedding_retrieve_result_items
+                    if doc.document not in result.docs and doc.document.content
+                ]
+            )
         if prompt:
             cpt = ChatPromptTemplate.from_template(prompt)
             input_vars = cpt.input_variables
@@ -496,14 +513,51 @@ class GraphRAGImpl(BaseRAG):
 
     async def retrieve(
         self, unique_name: str, queries: List[str], retrieve_top_k: int = 10
-    ) -> Dict[str, GraphRAGRetrieveResultItem]:
+    ) -> Dict[str, RetrieveResultItem]:
         """ """
 
         tasks = []
         for query in queries:
             tasks.append(self._retrieve_query(unique_name, query, retrieve_top_k))
         results: List[GraphRAGRetrieveResultItem] = await asyncio.gather(*tasks)
-        retrieve_results: Dict[str, GraphRAGRetrieveResultItem] = {}
+        retrieve_results: Dict[str, List[RetrieveResultItem]] = {}
         for i, query in enumerate(queries):
-            retrieve_results[query] = results[i]
+            retrieve_results[query] = [
+                RetrieveResultItem(doc=doc, query=query, metadata=results[i].metadata) for doc in results[i].docs
+            ]
         return retrieve_results
+
+    async def embbedding_retrieve(
+        self,
+        unique_name: str,
+        queries: List[str],
+        filter: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, List[RetrieveResultItem]]:
+        """
+        Retrieve documents using embedding-based search.
+        Args:
+            unique_name (str): Name of the index to use for retrieval.
+            queries (List[str]): List of query strings.
+        Returns:
+            Dict[str, List[RetrieveResultItem]]: Dictionary with queries as keys and lists of Document as values.
+        """
+        embedding_retrieval_results: Dict[str, List[RetrieveResultItem]] = {}
+        if len(queries) == 1:
+            embedding_retrieval_result = await self.storage.similar_search_with_scores(
+                (self._doc_index.format(unique_name), queries[0], 100, filter)
+            )
+            embedding_retrieval_results[queries[0]] = [
+                RetrieveResultItem(document=doc, score=score, query=queries[0])
+                for doc, score in embedding_retrieval_result
+            ]
+        else:
+            tasks = [
+                self.storage.similar_search_with_scores((self._doc_index.format(unique_name), query, 100, filter))
+                for query in queries
+            ]
+            results = await asyncio.gather(*tasks, return_exceptions=False)
+            for i, query in enumerate(queries):
+                embedding_retrieval_results[query] = [
+                    RetrieveResultItem(document=doc, score=score, query=query) for doc, score in results[i]
+                ]
+        return embedding_retrieval_results

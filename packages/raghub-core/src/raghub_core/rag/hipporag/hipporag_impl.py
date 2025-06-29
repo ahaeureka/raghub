@@ -20,6 +20,7 @@ from raghub_core.prompts.qa import DefaultQAPromptBuilder, QAPromptBuilder
 from raghub_core.rag.base_rag import BaseRAG
 from raghub_core.rag.hipporag.hipporag_storage import HipporagStorage
 from raghub_core.rag.hipporag.prompts import DSPyRerankPrompt, get_query_instruction
+from raghub_core.rerank.base_rerank import BaseRerank
 from raghub_core.schemas.chat_response import ChatResponse, QAChatResponse
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_model import GraphEdge, GraphVertex, Namespace, RelationType
@@ -39,6 +40,7 @@ class HippoRAGImpl(BaseRAG):
     def __init__(
         self,
         llm: BaseChat,
+        reranker: BaseRerank,
         embbeder: BaseEmbedding,
         embedding_store: VectorStorage,
         graph_store: GraphStorage,
@@ -62,6 +64,7 @@ class HippoRAGImpl(BaseRAG):
         self.synonymy_edge_key_batch_size = synonymy_edge_key_batch_size
         self.synonymy_edge_sim_threshold = synonymy_edge_sim_threshold
         self._llm = llm
+        self._reranker = reranker
         ner_prompt = NERPrompt()
         self._ner = NEROperator(ner_prompt, llm)
         rdf_prompt = REPrompt()
@@ -136,9 +139,15 @@ class HippoRAGImpl(BaseRAG):
         facts_str.extend([str(fact) for fact in facts])
         entities_str = list(set(entities_str))
         facts_str = list(set(facts_str))
+        logger.debug(
+            f"Extracted {len(entities_str)} entities and {len(facts_str)} facts from the document:{doc.content}."
+        )
         embed_entities = await self.add_embeddings(
             index_name, entities_str, self._entity_prefix, metadata={"namespace": Namespace.ENTITY.value}
         )
+        if not embed_entities:
+            logger.warning(f"No entities were added to the embedding store for index {index_name}.")
+            return doc
         logger.info(f"Added {len(embed_entities)} entities to the embedding store.")
         await self.add_embeddings(
             index_name, facts_str, self._fact_prefix, metadata={"namespace": Namespace.FACT.value}
@@ -167,7 +176,8 @@ class HippoRAGImpl(BaseRAG):
         entities: List[Document] = await self._embedd_store.select_on_metadata(
             index_name, {"namespace": Namespace.ENTITY.value}
         )
-        self._add_synonymy_edges(entities, entities, node_to_node_stats)
+        if entities:
+            self._add_synonymy_edges(entities, entities, node_to_node_stats)
         await self._augment_graph(index_name, embed_entities, [doc], node_to_node_stats)
         self._save()
         for key, chunks in ent_node_to_chunk_ids.items():
@@ -550,7 +560,6 @@ class HippoRAGImpl(BaseRAG):
                     top_k=retrieve_top_k,
                 )
                 docs_ids = list(sorted_doc_key_scores.keys())
-                logger.debug(f"graph_search_with_fact_entities retrieve docs_ids: {docs_ids}")
                 docs = await self._embedd_store.get_by_ids(index_name, docs_ids)
                 top_k_docs.extend(
                     [
@@ -898,6 +907,9 @@ class HippoRAGImpl(BaseRAG):
         Returns:
             None
         """
+        logger.debug(
+            f"Adding synonymy edges for {len(query_docs)} query documents and {len(target_docs)} target documents."
+        )
         query_node_key2knn_node_keys = self._embedd_store.knn(
             query_docs=query_docs,
             target_docs=target_docs,
@@ -1061,8 +1073,54 @@ class HippoRAGImpl(BaseRAG):
             nodes.append(node)
         return nodes
 
+    async def embbedding_retrieve(
+        self,
+        unique_name: str,
+        queries: List[str],
+        filter: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, List[RetrieveResultItem]]:
+        """
+        Retrieves documents based on the provided queries using the embedding store.
+
+        Args:
+            unique_name : str
+                The unique name for the index to be used for retrieval.
+            queries : List[str]
+                A list of query strings for which documents need to be retrieved.
+            filter : Optional[Dict[str, Any]], optional
+                Additional filter criteria for the retrieval. Defaults to None.
+
+        Returns:
+            Dict[str, List[RetrieveResultItem]]
+                A dictionary mapping each query to a list of retrieved Document objects.
+        """
+        if filter:
+            filter["namespace"] = Namespace.PASSAGE.value
+        tasks = [
+            self._embedd_store.asimilar_search_with_scores(
+                unique_name=unique_name,
+                query=query,
+                filter=filter,
+            )
+            for query in queries
+        ]
+        results: List[List[Tuple[Document, float]]] = await asyncio.gather(*tasks)
+        query_to_docs: Dict[str, List[Document]] = {}
+        for index, r in enumerate(results):
+            query_to_docs[queries[index]] = [
+                RetrieveResultItem(document=doc, score=score, query=queries[index], metadata={}) for doc, score in r
+            ]
+        return query_to_docs
+
     async def qa(
-        self, unique_name: str, query: str, top_k: int = 5, prompt: Optional[str] = None, llm: Optional[BaseChat] = None
+        self,
+        unique_name: str,
+        query: str,
+        top_k: int = 5,
+        prompt: Optional[str] = None,
+        llm: Optional[BaseChat] = None,
+        reranker: Optional[BaseRerank] = None,
+        filter: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[QAChatResponse]:
         """
         Performs a question-answering operation on the specified index using the provided query.
@@ -1083,7 +1141,8 @@ class HippoRAGImpl(BaseRAG):
                 An asynchronous iterator yielding QAChatResponse objects containing the answers and related information.
         """
         lang = detect_language(query)
-        res = await self.retrieve(unique_name, [query], top_k)
+        reranker = reranker or self._reranker
+        res = await self.hybrid_retrieve(unique_name, [query], reranker, top_k, filter=filter)
         for _, items in res.items():
             if not items:
                 yield QAChatResponse(query=query, answer="", sources=[], metadata={})

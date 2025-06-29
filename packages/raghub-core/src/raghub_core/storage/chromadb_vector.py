@@ -168,6 +168,10 @@ class ChromaDBVectorStorage(VectorStorage):
         # Implement the logic to retrieve documents by their IDs from ChromaDB
         if not self._client:
             await self.init()
+        if not ids:
+            logger.warning("No IDs provided for Chroma get operation.")
+            return []
+        ids = list(set(ids))  # Ensure unique IDs
         results = await run_in_executor(
             None,
             self._chromadb_store_for_index(index_name).get,

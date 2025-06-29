@@ -9,11 +9,11 @@ from raghub_core.schemas.document import Document
 from raghub_core.schemas.graph_model import Namespace
 from raghub_core.utils.class_meta import ClassFactory
 from raghub_core.utils.misc import compute_mdhash_id
+from raghub_protos.models.rag_model import RAGDocument
+from raghub_protos.pb import chat_pb2, rag_pb2
+from raghub_protos.pb.rag_pb2_grpc import RAGServiceServicer
 
 from raghub_interfaces.config.interface_config import InerfaceConfig
-from raghub_interfaces.protos.models.rag_model import RAGDocument
-from raghub_interfaces.protos.pb import chat_pb2, rag_pb2
-from raghub_interfaces.protos.pb.rag_pb2_grpc import RAGServiceServicer
 from raghub_interfaces.services.service_base import ServiceBase
 
 

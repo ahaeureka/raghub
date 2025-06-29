@@ -1,12 +1,10 @@
-from typing import AsyncIterator, Dict, List, Optional
+from typing import Dict, List
 
-from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
 from raghub_core.embedding import BaseEmbedding
 from raghub_core.rag.hipporag.hipporag_impl import HippoRAGImpl
 from raghub_core.rag.hipporag.hipporag_storage import HipporagStorage
-from raghub_core.schemas.chat_response import QAChatResponse
-from raghub_core.schemas.document import Document
+from raghub_core.rerank.base_rerank import BaseRerank
 from raghub_core.schemas.rag_model import RetrieveResultItem
 from raghub_core.storage.graph import GraphStorage
 from raghub_core.storage.vector import VectorStorage
@@ -29,7 +27,6 @@ class HippoRAG(BaseRAGApp):
             temperature=config.rag.llm.temperature,
             timeout=config.rag.llm.timeout,
         )  # Assuming BaseChat is imported from the correct module
-        super().__init__()
 
         self._embedder = ClassFactory.get_instance(
             "Embbedder",
@@ -50,8 +47,6 @@ class HippoRAG(BaseRAGApp):
             config.graph.provider, GraphStorage, **config.graph.model_dump()
         )
         self.config = config
-        logger.debug(f"Storage Provider store: {self.config.hipporag.storage_provider}")
-        logger.debug(f"Database url: {config.database.db_url}")
         self._db = ClassFactory.get_instance(
             config.hipporag.storage_provider,
             HipporagStorage,
@@ -63,15 +58,19 @@ class HippoRAG(BaseRAGApp):
         hipporag_config["embedding_prefix"] = config.rag.embbeding.embedding_key_prefix
         hipporag_config["graph_path"] = config.graph.graph_path
         hipporag_config.pop("storage_provider", None)
-        logger.debug(f"Creating HippoRAG with embedder: {self._embedder}")
+        self._rerank = ClassFactory.get_instance(
+            config.rag.rerank.provider, BaseRerank, **config.rag.rerank.model_dump()
+        )
         self.hipporag = HippoRAGImpl(
             self._llm,
+            self._rerank,
             self._embedder,
             self._embedd_store,
             self._graph_store,
             self._db,
             **hipporag_config,
         )
+        super().__init__(self.hipporag)
 
     async def create(self, unique_name: str):
         """
@@ -82,20 +81,6 @@ class HippoRAG(BaseRAGApp):
                 The unique name for the index to be created.
         """
         await self.hipporag.create(unique_name)
-
-    async def add_documents(self, unique_name: str, texts: List[Document], lang="en") -> List[Document]:
-        """
-        Adds documents to the vector store and graph store.
-
-        Args:
-            unique_name : str
-                The unique name for the index to which documents will be added.
-            texts : List[Document]
-                A list of Document objects to be added to the vector store and graph store.
-            lang : str
-                The language of the documents. Defaults to "en".
-        """
-        return await self.hipporag.add_documents(unique_name, texts)
 
     async def retrieve(
         self, unique_name: str, queries: List[str], retrieve_top_k=10, lang="en"
@@ -125,19 +110,6 @@ class HippoRAG(BaseRAGApp):
             lang=lang,
         )
 
-    async def delete(self, index_name: str, docs_to_delete: List[str]):
-        """
-        Deletes documents and their associated triples from the database, embedding store, and graph store.
-        Args:
-            index_name : str
-                The unique name for the index from which documents will be deleted.
-            docs_to_delete : List[str]
-                A list of document IDs to be deleted from the database, embedding store, and graph store.
-        Returns:
-            None
-        """
-        await self.hipporag.delete(index_name, docs_to_delete)
-
     async def init(self):
         """
         Initializes the HippoRAG instance by loading the database and embedding store.
@@ -145,29 +117,3 @@ class HippoRAG(BaseRAGApp):
             None
         """
         await self.hipporag.init()
-
-    async def QA(
-        self, unique_name: str, question: str, retrieve_top_k=5, lang="zh", prompt=None, llm: Optional[BaseChat] = None
-    ) -> AsyncIterator[QAChatResponse]:
-        """
-        Performs question answering on the HippoRAG application.
-        Args:
-            unique_name : str
-                The unique name for the index to be used for question answering.
-            question : str
-                The question to be answered.
-            retrieve_top_k : int, optional
-                The number of top documents to retrieve for answering the question. Defaults to 5.
-            lang : str, optional
-                The language of the question. Defaults to "zh".
-            prompt : Optional[BasePrompt], optional
-                A custom prompt to use for generating the answer. Defaults to None.
-            llm : Optional[BaseChat], optional
-                An optional LLM instance to use for answering the question. If not provided, the default
-        Returns:
-            AsyncIterator[QAChatResponse]
-            An asynchronous iterator that yields QAChatResponse objects containing the answers and metadata.
-        """
-
-        async for r in self.hipporag.qa(unique_name, question, retrieve_top_k, prompt=prompt, llm=llm):
-            yield r

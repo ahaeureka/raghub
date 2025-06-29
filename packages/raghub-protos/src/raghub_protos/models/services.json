@@ -3,14 +3,14 @@
         "Retrieval": {
             "input_type": ".raghub_interfaces.RetrievalRequest",
             "output_type": ".raghub_interfaces.RetrievalResponse",
+            "streaming_type": "unary",
+            "method_full_name": "/raghub_interfaces.RAGService/Retrieval",
             "options": {
                 "[google.api.http]": {
                     "post": "/v1/rag/retrieval",
                     "body": "*"
                 }
             },
-            "streaming_type": "unary",
-            "method_full_name": "/raghub_interfaces.RAGService/Retrieval",
             "http": {
                 "method": "POST",
                 "path": "/v1/rag/retrieval",
@@ -20,14 +20,14 @@
         "CreateIndex": {
             "input_type": ".raghub_interfaces.CreateIndexRequest",
             "output_type": ".raghub_interfaces.CreateIndexResponse",
+            "streaming_type": "unary",
+            "method_full_name": "/raghub_interfaces.RAGService/CreateIndex",
             "options": {
                 "[google.api.http]": {
                     "post": "/v1/rag/index",
                     "body": "*"
                 }
             },
-            "streaming_type": "unary",
-            "method_full_name": "/raghub_interfaces.RAGService/CreateIndex",
             "http": {
                 "method": "POST",
                 "path": "/v1/rag/index",
@@ -37,14 +37,14 @@
         "Chat": {
             "input_type": ".raghub_interfaces.CreateChatCompletionRequest",
             "output_type": ".raghub_interfaces.CreateChatCompletionResponse",
+            "streaming_type": "server_streaming",
+            "method_full_name": "/raghub_interfaces.RAGService/Chat",
             "options": {
                 "[google.api.http]": {
                     "post": "/v1/rag/chat/completions",
                     "body": "*"
                 }
             },
-            "streaming_type": "server_streaming",
-            "method_full_name": "/raghub_interfaces.RAGService/Chat",
             "http": {
                 "method": "POST",
                 "path": "/v1/rag/chat/completions",
@@ -54,14 +54,14 @@
         "AddDocuments": {
             "input_type": ".raghub_interfaces.AddDocumentsRequest",
             "output_type": ".raghub_interfaces.AddDocumentsResponse",
+            "streaming_type": "unary",
+            "method_full_name": "/raghub_interfaces.RAGService/AddDocuments",
             "options": {
                 "[google.api.http]": {
                     "post": "/v1/rag/documents",
                     "body": "*"
                 }
             },
-            "streaming_type": "unary",
-            "method_full_name": "/raghub_interfaces.RAGService/AddDocuments",
             "http": {
                 "method": "POST",
                 "path": "/v1/rag/documents",
@@ -71,14 +71,14 @@
         "DeleteDocuments": {
             "input_type": ".raghub_interfaces.DeleteDocumentsRequest",
             "output_type": ".raghub_interfaces.DeleteDocumentsResponse",
+            "streaming_type": "unary",
+            "method_full_name": "/raghub_interfaces.RAGService/DeleteDocuments",
             "options": {
                 "[google.api.http]": {
                     "delete": "/v1/rag/documents",
                     "body": "*"
                 }
             },
-            "streaming_type": "unary",
-            "method_full_name": "/raghub_interfaces.RAGService/DeleteDocuments",
             "http": {
                 "method": "DELETE",
                 "path": "/v1/rag/documents",

@@ -212,4 +212,4 @@ cache/
 online.toml
 .vscode/launch.json
 .zsh_history
-.devcontainer/.zsh_history
+.devcontainer/.zsh_history.devcontainer/.zsh_history

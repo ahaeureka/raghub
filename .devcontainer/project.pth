@@ -3,4 +3,6 @@
 /app/packages/raghub-app/src
 /app/packages/raghub-interfaces/src
 /app/packages/raghub-ext/src
+/app/packages/raghub-protos/src
+/app/packages/raghub-client/src
 /app/submodules/hipporag/src

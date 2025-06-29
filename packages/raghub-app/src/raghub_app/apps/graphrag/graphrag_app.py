@@ -1,4 +1,4 @@
-from typing import AsyncIterator, Dict, List, Optional
+from typing import Dict, List
 
 import numpy as np
 from raghub_core.chat.base_chat import BaseChat
@@ -6,7 +6,6 @@ from raghub_core.embedding.base_embedding import BaseEmbedding
 from raghub_core.rag.base_rag import BaseGraphRAGDAO
 from raghub_core.rag.graphrag.graphrag_impl import GraphRAGImpl
 from raghub_core.rag.graphrag.operators import DefaultGraphRAGOperators
-from raghub_core.schemas.chat_response import QAChatResponse
 from raghub_core.schemas.graph_model import GraphRAGRetrieveResultItem
 from raghub_core.schemas.rag_model import RetrieveResultItem
 from raghub_core.storage.graph import GraphStorage
@@ -31,7 +30,6 @@ class GraphRAG(BaseRAGApp):
             temperature=config.rag.llm.temperature,
             timeout=config.rag.llm.timeout,
         )  # Assuming BaseChat is imported from the correct module
-        super().__init__()
 
         self._embedder = ClassFactory.get_instance(
             "Embbedder",
@@ -65,6 +63,7 @@ class GraphRAG(BaseRAGApp):
             db=self._db,
         )
         self.app = GraphRAGImpl(self._llm, self._dao, DefaultGraphRAGOperators(self._llm, self._embedd_store))
+        super().__init__(self.app)
 
     async def init(self):
         """
@@ -81,9 +80,6 @@ class GraphRAG(BaseRAGApp):
         Create a new index in the GraphRAG application.
         """
         await self._embedd_store.create_index(label)
-
-    async def add_documents(self, unique_name, texts, lang="en"):
-        return await self.app.add_documents(unique_name, texts, lang)
 
     async def retrieve(
         self, unique_name: str, queries: List[str], retrieve_top_k=5, lang="zh"
@@ -111,31 +107,3 @@ class GraphRAG(BaseRAGApp):
                 )
             retrieval_items[query] = its
         return retrieval_items
-
-    async def delete(self, unique_name: str, docs_to_delete: List[str]):
-        """
-        Delete documents from the GraphRAG application.
-        Args:
-            unique_name: Unique name of the index.
-            docs_to_delete: List of document IDs to delete.
-        """
-        await self.app.delete(unique_name, docs_to_delete)
-
-    async def QA(
-        self, unique_name: str, question: str, retrieve_top_k=5, lang="zh", prompt=None, llm: Optional[BaseChat] = None
-    ) -> AsyncIterator[QAChatResponse]:
-        """
-        Perform question answering on the GraphRAG application.
-        Args:
-            unique_name: Unique name of the index.
-            question: The question to answer.
-            retrieve_top_k: Number of top results to retrieve (default is 5).
-            lang: Language of the question (default is "zh").
-            prompt: Optional prompt for the LLM.
-            llm: Optional LLM instance to use for answering the question. If not provided, the default LLM will be used.
-        Returns:
-            AsyncIterator[QAChatResponse]
-
-        """
-        async for r in self.app.qa(unique_name, question, retrieve_top_k, prompt, llm):
-            yield r

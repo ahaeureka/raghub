@@ -39,7 +39,9 @@ ENV UV_LINK_MODE=copy \
     UV_PYTHON=$DEFAULT_VENV/bin/python3 \
     UV_INDEX=$PIP_INDEX_URL \
     UV_DEFAULT_INDEX=$PIP_INDEX_URL \
-    MODELSCOPE_CACHE=/app/models
+    MODELSCOPE_CACHE=/app/models \
+    HF_MOME=/app/models \
+    HF_ENDPOINT=https://hf-mirror.com
 
 RUN pip config set global.index-url $PIP_INDEX_URL && \
     pip config set global.trusted-host $(echo "$PIP_INDEX_URL" | sed -E 's|^https?://([^/]+).*|\1|') && \

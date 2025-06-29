@@ -35,7 +35,7 @@ class ProxyLLMConfig(BaseParameters):
     )
     base_url: Optional[str] = BaseParameters.field(
         default=None,
-        description="OpenAI API Base URL",
+        description="Base URL",
         tags=["url"],
     )
     model: str = BaseParameters.field(
@@ -83,6 +83,37 @@ class EmbbedingModelConfig(ProxyLLMConfig):
     )
 
 
+class RerankConfig(ProxyLLMConfig):
+    """
+    Rerank Configuration Class
+    This class defines the configuration parameters for the Rerank application.
+    """
+
+    provider: str = BaseParameters.field(
+        default="transformers-reranker",
+        description="Rerank Provider",
+        tags=["rerank"],
+    )
+    model_name: str = BaseParameters.field(
+        default="Qwen/Qwen3-Reranker-0.6B",
+        description="Rerank Model Name",
+        tags=["model_name"],
+    )
+    max_length: int = BaseParameters.field(
+        default=4096,
+        description="Maximum length for the rerank model input",
+        tags=["max_length"],
+    )
+    apikey: Optional[str] = BaseParameters.field(
+        default=None, description="API Key for the rerank model", tags=["apikey"]
+    )
+    base_url: Optional[str] = BaseParameters.field(
+        default=None,
+        description="API URL for the rerank model",
+        tags=["api_url"],
+    )
+
+
 class RAGConfig(BaseParameters):
     """
     RAG（Retrieval-Augmented Generation)
@@ -97,6 +128,11 @@ class RAGConfig(BaseParameters):
         default=EmbbedingModelConfig(),
         description="Embedding Configuration",
         tags=["embedding"],
+    )
+    rerank: RerankConfig = BaseParameters.field(
+        default=RerankConfig(),
+        description="Rerank Configuration",
+        tags=["rerank"],
     )
     lang: str = BaseParameters.field(
         default="en",

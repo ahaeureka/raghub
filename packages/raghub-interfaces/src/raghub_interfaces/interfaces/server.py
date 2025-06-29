@@ -44,7 +44,8 @@ class Server(BaseInterface):
         This method can be used to perform any startup tasks, such as setting up routes or middleware.
         """
         await self._web.initialize()
-        from raghub_interfaces.protos.models import rag_model
+        from raghub_protos.models import rag_model
+
         from raghub_interfaces.services.rag import RAGServiceImpl
 
         services = {"rag": [RAGServiceImpl(self._config)]}

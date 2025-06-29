@@ -30,6 +30,8 @@ members = [
  "packages/raghub-interfaces",
  "packages/raghub-app",
  "packages/raghub-ext",
+ "packages/raghub-client/src",
+ "packages/raghub-protos",
 ]
 
 [[tool.uv.index]]
