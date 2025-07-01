@@ -113,3 +113,11 @@ class GraphRAG(BaseRAGApp):
                 )
             retrieval_items[query] = its
         return retrieval_items
+
+    def default_reranker(self) -> BaseRerank:
+        """
+        Get the default reranker for the application.
+        Returns:
+            BaseRerank: The default reranker instance.
+        """
+        return self._rerank if self._rerank else None

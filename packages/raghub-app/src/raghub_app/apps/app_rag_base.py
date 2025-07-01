@@ -61,6 +61,15 @@ class BaseRAGApp(metaclass=SingletonRegisterMeta):
         """
         raise NotImplementedError("Subclasses should implement this method.")
 
+    @abstractmethod
+    def default_reranker(self) -> Optional[BaseRerank]:
+        """
+        Get the default reranker for the application.
+        Returns:
+            Optional[BaseRerank]: The default reranker instance or None if not available.
+        """
+        raise NotImplementedError("Subclasses should implement this method.")
+
     async def hybrid_search(
         self,
         unique_name: str,

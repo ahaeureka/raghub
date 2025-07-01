@@ -152,6 +152,9 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
             query_to_docs[query] = [item.document for item in graph_retrieval_result[query]] + [
                 item.document for item in embedding_retrieval_results[query]
             ]
+            if not query_to_docs[query]:
+                logger.warning(f"No documents found for query '{query}' in hybrid retrieval.")
+                continue
             query_to_docs[query] = duplicate_filter(query_to_docs[query])
             rerank_to_docs = await reranker.rerank(query, query_to_docs[query])
             logger.debug(

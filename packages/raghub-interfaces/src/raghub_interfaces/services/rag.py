@@ -49,6 +49,7 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
         rsp = await self.app.hybrid_search(
             unique_name=request.knowledge_id,
             queries=[request.query],
+            reranker=self.app.default_reranker(),
             top_k=request.retrieval_setting.top_k or 5,
             similarity_threshold=request.retrieval_setting.score_threshold or 0.6,
         )

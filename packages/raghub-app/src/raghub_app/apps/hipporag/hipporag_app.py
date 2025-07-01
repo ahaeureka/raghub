@@ -117,3 +117,11 @@ class HippoRAG(BaseRAGApp):
             None
         """
         await self.hipporag.init()
+
+    def default_reranker(self) -> BaseRerank:
+        """
+        Returns the default reranker for the HippoRAG application.
+        Returns:
+            BaseRerank: The default reranker instance.
+        """
+        return self._rerank if self._rerank else None
