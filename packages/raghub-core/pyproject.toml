@@ -16,6 +16,7 @@ dependencies = [
  "langchain-chroma>=0.1.2",
  "langchain-community>=0.3.21",
  "langchain-openai>=0.3.14",
+ "langchain-qdrant>=0.2.0",
  "langid>=1.1.6",
  "loguru>=0.7.3",
  "nest-asyncio>=1.6.0",
@@ -44,6 +45,23 @@ dependencies = [
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"
 default = true
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "unit: marks tests as unit tests",
+    "integration: marks tests as integration tests", 
+    "qdrant: marks tests that require qdrant-client",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
 
 
 

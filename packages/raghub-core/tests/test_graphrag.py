@@ -1,6 +1,7 @@
 import asyncio
 import os
 
+import pytest
 from raghub_core.chat.openai_chat import OpenAIProxyChat
 from raghub_core.embedding.openai_embedding import OpenAIEmbedding
 from raghub_core.rag.graphrag.graph_dao import GraphRAGDAO
@@ -14,8 +15,15 @@ from raghub_core.utils.file.project import ProjectHelper
 from raghub_core.utils.misc import compute_mdhash_id
 
 
-# @pytest.fixture
+@pytest.fixture
 async def graphRAG():
+    """创建GraphRAG实例的fixture"""
+    # 检查必需的环境变量
+    required_env_vars = ["LLM_MODEL_NAME", "OPENAI_API_KEY", "OPENAI_API_BASE", "EMBEDDING_MODEL_NAME"]
+    for var in required_env_vars:
+        if var not in os.environ:
+            pytest.skip(f"跳过测试：缺少环境变量 {var}")
+
     llm = OpenAIProxyChat(os.environ["LLM_MODEL_NAME"], os.environ["OPENAI_API_KEY"], os.environ["OPENAI_API_BASE"])
     embbedder = OpenAIEmbedding(
         os.environ["OPENAI_API_KEY"],
@@ -33,7 +41,13 @@ async def graphRAG():
     return GraphRAGImpl(llm, embbedder, storage, DefaultGraphRAGOperators(llm, vector))
 
 
-# @pytest.mark.asyncio
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not all(
+        var in os.environ for var in ["LLM_MODEL_NAME", "OPENAI_API_KEY", "OPENAI_API_BASE", "EMBEDDING_MODEL_NAME"]
+    ),
+    reason="需要设置 LLM_MODEL_NAME, OPENAI_API_KEY, OPENAI_API_BASE, EMBEDDING_MODEL_NAME 环境变量",
+)
 async def test_add_documents(graphRAG: GraphRAGImpl):
     text = """
 在2023年国际人工智能大会上，来自斯坦福大学的研究团队发布了最新研发的量子计算模型Q-Net。该模型由首席科学家张伟博士带领，团队成员包括李娜和王强。Q-Net在图像识别任务中达到了98.7%的准确率，其核心算法基于图神经网络（GNN）架构。

@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from typing import Dict, List
-from xml.dom.minidom import Document
 
+from raghub_core.schemas.document import Document
 from raghub_core.utils.class_meta import RegisterABCMeta
 
 

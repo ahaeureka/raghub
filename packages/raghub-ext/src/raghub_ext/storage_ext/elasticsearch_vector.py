@@ -1,8 +1,14 @@
-from typing import Any, Dict, List, Optional, Tuple
+from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+from raghub_ext.storage_ext.utils.es_query_converter import ESQueryConverter
+
+if TYPE_CHECKING:
+    from elasticsearch import AsyncElasticsearch, Elasticsearch
+    from langchain_elasticsearch import ElasticsearchStore
 from langchain_core.embeddings import Embeddings
 from langchain_core.runnables.config import run_in_executor
-from langchain_core.vectorstores import VectorStore
 from loguru import logger
 from pydantic import BaseModel
 from raghub_core.embedding.base_embedding import BaseEmbedding
@@ -26,7 +32,7 @@ class ElasticsearchVectorStorage(VectorStorage):
         index_name_prefix: str = "raghub_index",
     ):
         try:
-            from elasticsearch import AsyncElasticsearch, Elasticsearch
+            from elasticsearch import AsyncElasticsearch, Elasticsearch  # noqa: F401
 
         except ImportError:
             raise ImportError("Please install langchain_elasticsearch with pip install langchain_elasticsearch")
@@ -40,8 +46,9 @@ class ElasticsearchVectorStorage(VectorStorage):
         self._client: Optional[Elasticsearch] = None
         self._async_client: Optional[AsyncElasticsearch] = None
         self._index_name_prefix = index_name_prefix
+        self._query_convert = ESQueryConverter()
 
-    async def init(self):
+    def init(self):
         """
         Initialize Elasticsearch client
         """
@@ -80,7 +87,7 @@ class ElasticsearchVectorStorage(VectorStorage):
             logger.error(f"Failed to initialize Elasticsearch vector store: {e}")
             raise
 
-    def _es_store_for_index(self, index_name: str) -> VectorStore:
+    def _es_store_for_index(self, index_name: str) -> ElasticsearchStore:
         """
         创建 ElasticsearchStore 实例
         """
@@ -178,6 +185,55 @@ class ElasticsearchVectorStorage(VectorStorage):
             return False
 
     def _build_metadata_query(self, metadata_filter: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        构建元数据查询，支持新的转换器和旧有的简单过滤逻辑
+
+        Args:
+            metadata_filter: 元数据过滤条件，可以是：
+                1. 旧格式：{"key": "value", "key2": ["value1", "value2"]}
+                2. 新格式：{"logical_operator": "and", "conditions": [...]}
+
+        Returns:
+            Elasticsearch查询字典
+        """
+        # 检查是否为新的MetadataCondition格式
+        if self._is_metadata_condition_format(metadata_filter):
+            # 使用新的转换器，传入metadata字段前缀
+            return self._query_convert.convert_metadata_condition(metadata_filter, "metadata.")
+        else:
+            # 保持旧有的简单过滤逻辑
+            return self._build_simple_metadata_query(metadata_filter)
+
+    def _is_metadata_condition_format(self, metadata_filter: Dict[str, Any]) -> bool:
+        """
+        判断是否为MetadataCondition格式
+
+        Args:
+            metadata_filter: 待检查的过滤条件
+
+        Returns:
+            True如果是MetadataCondition格式，False如果是简单格式
+        """
+        # MetadataCondition格式必须包含conditions字段
+        if "conditions" in metadata_filter:
+            conditions = metadata_filter.get("conditions", [])
+            if isinstance(conditions, list) and len(conditions) > 0:
+                # 检查第一个条件是否包含MetadataConditionItem的必需字段
+                first_condition = conditions[0]
+                if isinstance(first_condition, dict):
+                    return "name" in first_condition and "comparison_operator" in first_condition
+        return False
+
+    def _build_simple_metadata_query(self, metadata_filter: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        构建简单的元数据查询（保持旧有逻辑）
+
+        Args:
+            metadata_filter: 简单格式的元数据过滤条件
+
+        Returns:
+            Elasticsearch查询字典
+        """
         bool_query: Dict[str, Any] = {"bool": {"must": []}}
         for key, value in metadata_filter.items():
             if isinstance(value, list):

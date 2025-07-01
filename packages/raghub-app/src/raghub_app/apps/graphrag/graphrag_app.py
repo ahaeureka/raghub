@@ -6,6 +6,7 @@ from raghub_core.embedding.base_embedding import BaseEmbedding
 from raghub_core.rag.base_rag import BaseGraphRAGDAO
 from raghub_core.rag.graphrag.graphrag_impl import GraphRAGImpl
 from raghub_core.rag.graphrag.operators import DefaultGraphRAGOperators
+from raghub_core.rerank.base_rerank import BaseRerank
 from raghub_core.schemas.graph_model import GraphRAGRetrieveResultItem
 from raghub_core.schemas.rag_model import RetrieveResultItem
 from raghub_core.storage.graph import GraphStorage
@@ -62,7 +63,12 @@ class GraphRAG(BaseRAGApp):
             graph_store=self._graph_store,
             db=self._db,
         )
-        self.app = GraphRAGImpl(self._llm, self._dao, DefaultGraphRAGOperators(self._llm, self._embedd_store))
+        self._rerank = ClassFactory.get_instance(
+            config.rag.rerank.provider, BaseRerank, **config.rag.rerank.model_dump()
+        )
+        self.app = GraphRAGImpl(
+            self._llm, self._rerank, self._dao, DefaultGraphRAGOperators(self._llm, self._embedd_store)
+        )
         super().__init__(self.app)
 
     async def init(self):

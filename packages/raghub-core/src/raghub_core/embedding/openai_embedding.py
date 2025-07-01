@@ -10,7 +10,12 @@ class OpenAIEmbedding(BaseEmbedding):
     name = "openai-proxy-embedding"
 
     def __init__(
-        self, api_key, model_name="text-embedding-ada-002", base_url="https://api.openai.com/v1", batch_size: int = 5
+        self,
+        api_key,
+        model_name="text-embedding-ada-002",
+        base_url="https://api.openai.com/v1",
+        batch_size: int = 5,
+        n_dims: Optional[int] = None,
     ):
         super().__init__()
         if not base_url:
@@ -19,6 +24,11 @@ class OpenAIEmbedding(BaseEmbedding):
         self._async_client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
         self._batch_size = batch_size
+        self._n_dims = n_dims
+
+    @property
+    def embedding_dim(self):
+        return self._n_dims
 
     def encode(self, texts: List[str], instruction: Optional[str] = None) -> np.ndarray:
         # OpenAI requires batch size <=16

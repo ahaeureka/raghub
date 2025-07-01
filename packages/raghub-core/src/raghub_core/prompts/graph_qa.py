@@ -75,6 +75,7 @@ class GraphRAGContextPrompt(BasePrompt):
 - 识别每个段落的关键概念和关系
 - 追踪段落依赖和交叉引用
 - 优先处理与查询相关的最新/相关段落
+- 上下文中会包含历史沟通记录`History Context`,你可以以此为参考，帮助你更好地理解用户问题
 
 2. 知识图谱整合 [Knowledge Graph]
 - 分别解析实体和关系部分

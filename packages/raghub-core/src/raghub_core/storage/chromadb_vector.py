@@ -2,8 +2,10 @@ import asyncio
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+if TYPE_CHECKING:
+    pass
 from langchain_core.documents import Document as LangchainDocument
 from langchain_core.runnables.config import run_in_executor
 from langchain_core.vectorstores import VectorStore
@@ -44,14 +46,17 @@ class ChromaDBVectorStorage(VectorStorage):
         return self._embedder.encode([text]).tolist()[0]
 
     async def init(self):
-        from chromadb import PersistentClient
+        try:
+            from chromadb import PersistentClient
 
-        # from chromadb import Chroma
-        self._embedder.init()
-        await asyncio.sleep(0.01)  # Yield control to the event loop
-        self._client = PersistentClient(
-            path=self.persist_directory.as_posix(),
-        )
+            # from chromadb import Chroma
+            self._embedder.init()
+            await asyncio.sleep(0.01)  # Yield control to the event loop
+            self._client = PersistentClient(
+                path=self.persist_directory.as_posix(),
+            )
+        except ImportError:
+            raise ImportError("ChromaDB is not installed. Please install it using `pip install chromadb`.")
 
     @lru_cache(maxsize=128)
     def create_index(self, index_name: str) -> VectorStore:
@@ -60,14 +65,17 @@ class ChromaDBVectorStorage(VectorStorage):
         """
         if not self._client:
             raise ValueError("ChromaDB client is not initialized. Call `init()` first.")
-        from langchain_chroma import Chroma
+        try:
+            from langchain_chroma import Chroma
 
-        return Chroma(
-            collection_name=index_name,
-            embedding_function=LangchainEmbeddings(self._embedder),
-            persist_directory=self.persist_directory.as_posix(),
-            client=self._client,
-        )
+            return Chroma(
+                collection_name=index_name,
+                embedding_function=LangchainEmbeddings(self._embedder),
+                persist_directory=self.persist_directory.as_posix(),
+                client=self._client,
+            )
+        except ImportError:
+            raise ImportError("ChromaDB is not installed. Please install it using `pip install langchain-chroma`.")
 
     def _chromadb_store_for_index(self, index_name: str) -> VectorStore:
         # Implement the logic to create or get a ChromaDB store for the given index name

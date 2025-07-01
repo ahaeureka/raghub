@@ -78,9 +78,12 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
         self,
         unique_name: str,
         query: str,
+        history_context: Optional[str] = "",
         top_k: int = 5,
+        similarity_threshold=0.6,
         prompt: Optional[str] = None,
         llm: Optional[BaseChat] = None,
+        reranker: Optional[BaseRerank] = None,
         filter: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[QAChatResponse]:
         """
@@ -88,9 +91,11 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
         Args:
             unique_name (str): Name of the index to use for the question answering.
             query (str): The question to answer.
-            top_k (int): Number of top results to retrieve.
+            history_context (Optional[str]): Optional context from previous interactions.
+            similarity_threshold (float): Threshold for similarity scores to consider a document relevant.
             prompt (Optional[str]): Optional prompt for the LLM.
             llm (Optional[BaseChat]): Optional LLM instance to use for generating answers.
+            reranker (Optional[BaseRerank]): Optional reranker instance to use for reranking results.
             filter (Optional[Dict[str, Any]]): Optional filter criteria for retrieval.
         Returns:
             AsyncIterator[QAChatResponse]: Iterator of QAChatResponse containing the answers and their scores.
@@ -98,7 +103,7 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("This method 'qa' should be overridden by subclasses.")
 
     @abstractmethod
-    async def embbedding_retrieve(
+    async def embedding_retrieve(
         self,
         unique_name: str,
         queries: List[str],
@@ -113,13 +118,14 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
         Returns:
             Dict[str, List[RetrieveResultItem]]: Dictionary with queries as keys and lists of Document as values.
         """
-        raise NotImplementedError("This method 'embbedding_retrieve' should be overridden by subclasses.")
+        raise NotImplementedError("This method 'embedding_retrieve' should be overridden by subclasses.")
 
     async def hybrid_retrieve(
         self,
         unique_name: str,
         queries: List[str],
         reranker: BaseRerank,
+        top_k: int = 5,
         similarity_threshold=0.7,
         filter: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, List[RetrieveResultItem]]:
@@ -135,35 +141,38 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
             Dict[str, List[RetrieveResultItem]]: Dictionary with queries as keys and
             lists of RetrieveResultItem as values.
         """
-        graph_retrieval_result: Dict[str, List[RetrieveResultItem]] = await self.retrieve(unique_name, queries, 10)
-        embedding_retrieval_results: Dict[str, List[RetrieveResultItem]] = await self.embbedding_retrieve(
+        graph_retrieval_result: Dict[str, List[RetrieveResultItem]] = await self.retrieve(unique_name, queries, top_k)
+        embedding_retrieval_results: Dict[str, List[RetrieveResultItem]] = await self.embedding_retrieve(
             unique_name, queries, filter
         )
-        logger.debug(f"Graph retrieval results: {graph_retrieval_result}")
-        logger.debug(f"Embedding retrieval results: {embedding_retrieval_results}")
 
         hybrid_results: Dict[str, RetrieveResultItem] = {}
         query_to_docs: Dict[str, List[Document]] = {}
         for query in queries:
-            query_to_docs[query] = [item.doc for item in graph_retrieval_result[query]] + [
-                item.doc for item in embedding_retrieval_results[query]
+            query_to_docs[query] = [item.document for item in graph_retrieval_result[query]] + [
+                item.document for item in embedding_retrieval_results[query]
             ]
             query_to_docs[query] = duplicate_filter(query_to_docs[query])
             rerank_to_docs = await reranker.rerank(query, query_to_docs[query])
+            logger.debug(
+                f"Rerank results for query '{query}': {rerank_to_docs},similarity_threshold:{similarity_threshold}"
+            )
+            uid_to_docs = {doc.uid: doc for doc in query_to_docs[query]}
             rerank_docs = [
                 Document(
-                    content=doc.content,
-                    summary=doc.summary,
-                    uid=doc.uid,
-                    metadata=doc.metadata,
-                    embedding=doc.embedding,
+                    content=uid_to_docs[uid].content,
+                    summary=uid_to_docs[uid].summary,
+                    uid=uid_to_docs[uid].uid,
+                    metadata=uid_to_docs[uid].metadata,
+                    embedding=uid_to_docs[uid].embedding,
                 )
-                for doc, score in rerank_to_docs.items()
+                for uid, score in rerank_to_docs.items()
                 if score >= similarity_threshold
             ]
+            logger.debug(f"Rerank documents for query '{query}': {[doc.uid for doc in rerank_docs]}")
             hybrid_results[query] = [
                 RetrieveResultItem(
-                    doc=doc,
+                    document=doc,
                     query=query,
                     score=rerank_to_docs[doc.uid],
                     metadata=graph_retrieval_result[query][0].metadata if graph_retrieval_result[query] else {},
@@ -290,11 +299,11 @@ class BaseGraphRAGDAO(metaclass=SingletonRegisterMeta):
         raise NotImplementedError("This method 'similar_search_with_scores' should be overridden by subclasses.")
 
     @abstractmethod
-    async def discover_communities(self, label: str) -> List[GraphCommunity]:
+    async def discover_communities(self, label: str) -> List[str]:
         """
         Discover communities in the graph storage system.
         Returns:
-            List[str]: List of discovered communities.
+            List[str]: List of discovered community IDs.
         """
         raise NotImplementedError("This method 'discover_communities' should be overridden by subclasses.")
 

@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   rag_model.py
-@Time    :   2025-06-29 15:02:13
+@Time    :   2025-07-01 15:53:24
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 

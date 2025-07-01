@@ -3,6 +3,7 @@ from typing import AsyncIterator, List
 import grpc
 from loguru import logger
 from protobuf_pydantic_gen.any_type_transformer import AnyTransformer
+from raghub_app.app_schemas.history_context import HistoryContext, HistoryContextItem
 from raghub_app.apps.app_rag_base import BaseRAGApp
 from raghub_core.schemas.chat_response import QAChatResponse
 from raghub_core.schemas.document import Document
@@ -45,10 +46,11 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
         self, request: rag_pb2.RetrievalRequest, context: grpc.ServicerContext
     ) -> rag_pb2.RetrievalResponse:
         """Retrieve method implementation."""
-        rsp = await self.app.retrieve(
+        rsp = await self.app.hybrid_search(
             unique_name=request.knowledge_id,
             queries=[request.query],
-            retrieve_top_k=request.retrieval_setting.top_k,
+            top_k=request.retrieval_setting.top_k or 5,
+            similarity_threshold=request.retrieval_setting.score_threshold or 0.6,
         )
         records: List[rag_pb2.RetrievalResponseRecord] = []
         items = rsp.get(request.query, [])
@@ -124,10 +126,16 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
         #     question=query,
         #     retrieve_top_k=settings.top_k,
         # )
-        r = self.app.QA(
+        history_messages = request.messages[:-1] if len(request.messages) > 1 else []
+        histories = HistoryContext(
+            items=[HistoryContextItem(role=msg.role, content=msg.content) for msg in history_messages]
+        )
+        r = self.app.chat(
             unique_name=unique_name,
             question=query,
+            histories=histories,
             retrieve_top_k=settings.top_k,
+            similarity_threshold=settings.score_threshold,
         )
         async for resp in r:
             if resp:
@@ -157,22 +165,29 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
             rag_doc_model = RAGDocument.from_protobuf(rag_doc)  # Ensure the RAGDocument is properly converted
             rag_doc_model.metadata["source"] = rag_doc.source
             rag_doc_model.metadata["type"] = rag_doc.type
+            rag_doc_model.metadata["title"] = rag_doc.title
+
             doc = Document(
                 content=rag_doc.content,
                 metadata=rag_doc_model.metadata,
                 uid=compute_mdhash_id(request.knowledge_id, rag_doc.content, Namespace.DOC.value),
             )
+            doc.metadata["knowledge_id"] = request.knowledge_id
             docs.append(doc)
         new_docs: List[Document] = await self.app.add_documents(unique_name=request.knowledge_id, texts=docs)
         # response = rag_pb2.AddDocumentsResponse()
         rsp_rag_docs: List[rag_pb2.RAGDocument] = []
         for doc in new_docs:
             logger.debug(f"Document added services: {doc}..")
+            metadata = {key: AnyTransformer.any_type_to_protobuf(value) for key, value in doc.metadata.items()}
+            metadata["knowledge_id"] = AnyTransformer.any_type_to_protobuf(request.knowledge_id)
+            metadata["uid"] = AnyTransformer.any_type_to_protobuf(doc.uid)
             rag_doc = rag_pb2.RAGDocument(
                 content=doc.content,
-                metadata={key: AnyTransformer.any_type_to_protobuf(value) for key, value in doc.metadata.items()},
+                metadata=metadata,
                 source=doc.metadata.get("source", ""),
                 type=doc.metadata.get("type", ""),
+                title=doc.metadata.get("title", ""),
             )
             rsp_rag_docs.append(rag_doc)
         response = rag_pb2.AddDocumentsResponse(

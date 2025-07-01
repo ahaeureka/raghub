@@ -20,6 +20,10 @@ class LocalEmbedding(BaseEmbedding):
     def _load_model(self):
         raise NotImplementedError("This method should be overridden by subclasses.")
 
+    @property
+    def embedding_dim(self):
+        return self._n_dims
+
 
 class SentenceTransformersEmbedding(LocalEmbedding):
     name = "sentence_transformers_embbeding"

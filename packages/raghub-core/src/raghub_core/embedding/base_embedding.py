@@ -12,6 +12,10 @@ class BaseEmbedding(metaclass=SingletonRegisterMeta):
     def encode(self, texts: List[str], instruction: Optional[str] = None) -> np.ndarray:
         raise NotImplementedError("This method should be overridden by subclasses.")
 
+    @property
+    def embedding_dim(self):
+        return None
+
     @abstractmethod
     def encode_query(self, query: str, instruction: Optional[str] = None) -> np.ndarray:
         raise NotImplementedError("This method should be overridden by subclasses.")

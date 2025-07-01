@@ -65,3 +65,7 @@ class Embbedder(BaseEmbedding):
         if self.embbedder is None:
             raise ValueError("Embedder is not initialized. Please call `initialize` method first.")
         return await self.embbedder.aencode_query(query, instruction)
+
+    @property
+    def embedding_dim(self):
+        return self.n_dims

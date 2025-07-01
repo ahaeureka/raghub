@@ -8,8 +8,13 @@ import logging
 import pytest
 from raghub_protos.models.rag_model import RAGDocument
 
-from .base_test import BaseRAGTest
-from .config import TestConfig
+# 使用绝对导入避免模块路径冲突
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+from base_test import BaseRAGTest
+from config import TestConfig
 
 logger = logging.getLogger(__name__)
 

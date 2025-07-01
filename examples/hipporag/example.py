@@ -12,7 +12,7 @@ async def main():
     from raghub_ext import storage_ext  # noqa: F401
 
     # app_config = ConfigLoader.load(cls=APPConfig, file_path="/app/examples/hipporag/online.toml")
-    app_config = ConfigLoader.load(cls=APPConfig, file_path="/app/.devcontainer/online.toml")
+    app_config = ConfigLoader.load(cls=APPConfig, file_path="/app/.devcontainer/dev.toml")
 
     impl = HippoRAG(app_config)
     await impl.init()

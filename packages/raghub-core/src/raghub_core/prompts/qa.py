@@ -19,14 +19,16 @@ class DefaultQAPrompt(BasePrompt):
                 system_message="""
                         You are a helpful assistant that answers questions based on 
                         the provided context from knowledge base.
+                        The context may contain historical information `History Context` that can help you better understand the user's question.
                         If the context does not contain relevant information, you will answer "I don't know".
-                        """,
+                        """,  # noqa: E501
                 user_message="Context: {context}\nQuestion: {question}\nAnswer:",
             ),
             PromptModel(
                 language="zh",
                 system_message="""
                         你是一个有用的智能助手，擅长根据知识库提供的上下文回答问题。
+                        上下文内容中包含的历史信息`History Context`可以帮助你更好地理解用户的问题。
                         当上下文中没有相关信息时，你会回答“我不知道”。
                         """,
                 user_message="上下文: {context}\n问题: {question}\n答案:",
@@ -50,15 +52,21 @@ class DefaultQAPrompt(BasePrompt):
 
 class QAPromptBuilder(ABC):
     @abstractmethod
-    def build(self, docs: List[RetrieveResultItem], question: str, lang="zh"):
+    def build(
+        self, docs: List[RetrieveResultItem], question: str, lang="zh", history_context: Optional[str] = ""
+    ) -> str:
         raise NotImplementedError("This method should be overridden by subclasses.")
 
 
 class DefaultQAPromptBuilder(QAPromptBuilder):
-    def build(self, items: List[RetrieveResultItem], question: str, lang="zh") -> str:
+    def build(
+        self, items: List[RetrieveResultItem], question: str, lang="zh", history_context: Optional[str] = ""
+    ) -> str:
         """
         Builds a question-answering prompt using the provided documents and question.
         """
         context = "\n\n".join([item.document.content for item in items])
+        if history_context:
+            context += f"\n\nHistory Context: \n{history_context}\n\n"
         prompt = DefaultQAPrompt().get(lang).invoke(dict(context=context, question=question))
         return prompt.to_string()

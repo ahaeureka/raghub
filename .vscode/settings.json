@@ -34,5 +34,25 @@
     "editor.formatOnSave": true,
     "[dockerfile]": {
         "editor.defaultFormatter": "ms-azuretools.vscode-containers"
-    }
+    },
+    // Pytest 配置
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestArgs": [
+        "-c",
+        "pytest.ini"
+    ],
+    "python.testing.cwd": "${workspaceFolder}",
+    "python.testing.autoTestDiscoverOnSaveEnabled": true,
+    "python.testing.promptToConfigure": false,
+    "python.testing.pytestPath": "/opt/.uv.venv/bin/pytest",
+    // Python 解释器和环境配置
+    "python.defaultInterpreterPath": "/opt/.uv.venv/bin/python3",
+    "python.terminal.activateEnvironment": true,
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/packages/raghub-client/src",
+        "${workspaceFolder}/packages/raghub-core/src",
+        "${workspaceFolder}/packages/raghub-protos/src",
+        "${workspaceFolder}/packages/raghub-interfaces/src"
+    ]
 }

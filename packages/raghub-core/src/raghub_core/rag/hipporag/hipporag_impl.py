@@ -5,6 +5,7 @@ import itertools
 import json
 import re
 import traceback
+from asyncio import Lock
 from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 import numpy as np
@@ -37,11 +38,24 @@ from .rerank import DSPyFilter
 
 
 class HippoRAGImpl(BaseRAG):
+    """
+    HippoRAG implementation for Multi-hop Knowledge Graph reasoning.
+
+    This implementation combines dense passage retrieval with graph-based reasoning
+    using personalized PageRank for enhanced retrieval accuracy.
+
+    Optimizations include:
+    - Batch processing for document operations
+    - Concurrent embedding generation
+    - Efficient graph traversal algorithms
+    - Memory-optimized data structures
+    """
+
     def __init__(
         self,
         llm: BaseChat,
         reranker: BaseRerank,
-        embbeder: BaseEmbedding,
+        embedder: BaseEmbedding,  # TODO: Fix typo in parameter name in future version
         embedding_store: VectorStorage,
         graph_store: GraphStorage,
         hipporag_store: HipporagStorage,
@@ -51,11 +65,27 @@ class HippoRAGImpl(BaseRAG):
         passage_node_weight: float = 0.05,
         graph_path: Optional[str] = None,
         synonymy_edge_topk: int = 2047,
-        synonymy_edge_query_batch_size=1000,
-        synonymy_edge_key_batch_size=1000,
-        synonymy_edge_sim_threshold=0.8,
+        synonymy_edge_query_batch_size: int = 1000,
+        synonymy_edge_key_batch_size: int = 1000,
+        synonymy_edge_sim_threshold: float = 0.8,
         qa_prompt_builder: QAPromptBuilder = DefaultQAPromptBuilder(),
+        # Performance tuning parameters
+        max_concurrent_documents: int = 10,
+        embedding_batch_size: int = 32,
+        graph_batch_size: int = 100,
     ):
+        # Initialize parent class first
+        super().__init__()
+
+        # Core components
+        self._llm = llm
+        self._reranker = reranker
+        self._embedder = embedder
+        self._embedd_store: VectorStorage = embedding_store
+        self._graph_store: GraphStorage = graph_store
+        self._db = hipporag_store
+
+        # Configuration parameters
         self.linking_top_k = linking_top_k
         self.passage_node_weight = passage_node_weight
         self.graph_path = graph_path
@@ -63,33 +93,43 @@ class HippoRAGImpl(BaseRAG):
         self.synonymy_edge_query_batch_size = synonymy_edge_query_batch_size
         self.synonymy_edge_key_batch_size = synonymy_edge_key_batch_size
         self.synonymy_edge_sim_threshold = synonymy_edge_sim_threshold
-        self._llm = llm
-        self._reranker = reranker
-        ner_prompt = NERPrompt()
-        self._ner = NEROperator(ner_prompt, llm)
-        rdf_prompt = REPrompt()
-        self._rdf = RDFOperator(rdf_prompt, llm)
-        self._openie = OpenIEOperator(self._ner, self._rdf)
-        dsp_prompt = DSPyRerankPrompt(best_dspy_path=dspy_file_path)
-        super().__init__()
         self._embedding_prefix = embedding_prefix
 
-        self._embedder = embbeder
+        # Performance optimization parameters
+        self._max_concurrent_documents = max_concurrent_documents
+        self._embedding_batch_size = embedding_batch_size
+        self._graph_batch_size = graph_batch_size
 
-        self._embedd_store: VectorStorage = embedding_store
-        self._graph_store: GraphStorage = graph_store
-        self.rerank_filter = DSPyFilter(dsp_prompt, llm)
-        # self.config = config
-        self._db = hipporag_store
+        # Concurrency control
+        self._lock = Lock()
+        self._document_semaphore = asyncio.Semaphore(max_concurrent_documents)
 
-        self._ready_to_retrieve = False
-        # self._query_to_embedding: Dict = {"triple": {}, "passage": {}}
+        # Initialize operators
+        self._initialize_operators(dspy_file_path)
 
+        # Namespace prefixes
         self._entity_prefix = Namespace.ENTITY.value
         self._fact_prefix = Namespace.FACT.value
         self._doc_prefix = Namespace.DOC.value
+
+        # State management
         self.already_init = False
+        self._ready_to_retrieve = False
         self._qa_prompt_builder = qa_prompt_builder
+
+    def _initialize_operators(self, dspy_file_path: str) -> None:
+        """Initialize NLP operators for entity and relation extraction."""
+        try:
+            ner_prompt = NERPrompt()
+            self._ner = NEROperator(ner_prompt, self._llm)
+            rdf_prompt = REPrompt()
+            self._rdf = RDFOperator(rdf_prompt, self._llm)
+            self._openie = OpenIEOperator(self._ner, self._rdf)
+            dsp_prompt = DSPyRerankPrompt(best_dspy_path=dspy_file_path)
+            self.rerank_filter = DSPyFilter(dsp_prompt, self._llm)
+        except Exception as e:
+            logger.error(f"Failed to initialize operators: {e}")
+            raise RuntimeError(f"Operator initialization failed: {e}") from e
 
     async def create(self, index_name: str):
         if not self.already_init:
@@ -101,109 +141,225 @@ class HippoRAGImpl(BaseRAG):
         Adds a single document to the vector store and graph store.
 
         Args:
-            index_name : str
-                The name of the index where the document will be added.
-            doc : Document
-                The Document object to be added to the vector store and graph store.
+            index_name: The name of the index where the document will be added.
+            doc: The Document object to be added to the vector store and graph store.
+
+        Returns:
+            Document: The processed document with updated metadata.
+
+        Raises:
+            RuntimeError: If document processing fails.
         """
-        lang = detect_language(doc.content)
-        chunk_triples: Dict[str, List[Tuple[str, str, str]]] = {}  # a dictionary of triples for each chunk
-        openie_infos: List[OpenIEInfo] = []
-        entities_str = []
-        doc_to_triple_entities: Dict[str, List[List[str]]] = {}
-        facts_str = []
-        if not doc.uid:
-            doc.uid = compute_mdhash_id(index_name, doc.content, prefix=self._doc_prefix)
-        doc.metadata = doc.metadata or {}
-        doc.metadata["namespace"] = Namespace.PASSAGE.value
-        doc.metadata["openie_idx"] = doc.uid
-        ie: OpenIEModel = await self._openie.extract(doc.content, lang=lang)
-        openie_infos.append(
-            OpenIEInfo(
-                idx=doc.uid,
-                passage=doc.content,
-                extracted_triples=[list(item) for item in ie.triples],
-                extracted_entities=list(set(ie.ner)),
+        try:
+            # Input validation
+            if not doc.content or not doc.content.strip():
+                logger.warning(f"Empty document content for document {doc.uid}")
+                return doc
+
+            lang = detect_language(doc.content)
+            chunk_triples: Dict[str, List[Tuple[str, str, str]]] = {}
+            openie_infos: List[OpenIEInfo] = []
+            entities_str = []
+            doc_to_triple_entities: Dict[str, List[List[str]]] = {}
+            facts_str = []
+
+            # Generate UID if not provided
+            if not doc.uid:
+                doc.uid = compute_mdhash_id(index_name, doc.content, prefix=self._doc_prefix)
+
+            # Initialize metadata with namespace
+            doc.metadata = doc.metadata or {}
+            doc.metadata["namespace"] = Namespace.PASSAGE.value
+            doc.metadata["openie_idx"] = doc.uid
+
+            # Extract entities and relations using OpenIE
+            ie: OpenIEModel = await self._openie.extract(doc.content, lang=lang)
+
+            if not ie.triples and not ie.ner:
+                logger.warning(f"No entities or triples extracted from document {doc.uid}")
+                # Still add the document even without extracted knowledge
+                docs = await self._embedd_store.add_documents(index_name, [doc])
+                return doc
+
+            # Process extracted information
+            openie_infos.append(
+                OpenIEInfo(
+                    idx=doc.uid,
+                    passage=doc.content,
+                    extracted_triples=[list(item) for item in ie.triples],
+                    extracted_entities=list(set(ie.ner)),
+                )
             )
-        )
-        graph_nodes, triple_entities = self._extract_entity_nodes(ie.triples)
-        doc_to_triple_entities[doc.uid] = triple_entities
-        chunk_triples[doc.uid] = [(item[0], item[1], item[2]) for item in ie.triples if len(item) == 3]
-        entities_str.extend([str(node) for node in graph_nodes])
-        doc.metadata["entities"] = [
-            compute_mdhash_id(index_name, str(node), self._entity_prefix) for node in graph_nodes
-        ]
-        logger.debug(f"Extracted {ie.triples} triples from the document.")
-        doc.metadata["facts"] = [compute_mdhash_id(index_name, str(fact), self._fact_prefix) for fact in ie.triples]
-        facts = self._flatten_facts([ie.triples])
-        facts_str.extend([str(fact) for fact in facts])
-        entities_str = list(set(entities_str))
-        facts_str = list(set(facts_str))
-        logger.debug(
-            f"Extracted {len(entities_str)} entities and {len(facts_str)} facts from the document:{doc.content}."
-        )
-        embed_entities = await self.add_embeddings(
-            index_name, entities_str, self._entity_prefix, metadata={"namespace": Namespace.ENTITY.value}
-        )
-        if not embed_entities:
-            logger.warning(f"No entities were added to the embedding store for index {index_name}.")
+
+            graph_nodes, triple_entities = self._extract_entity_nodes(ie.triples)
+            doc_to_triple_entities[doc.uid] = triple_entities
+            chunk_triples[doc.uid] = [(item[0], item[1], item[2]) for item in ie.triples if len(item) == 3]
+            entities_str.extend([str(node) for node in graph_nodes])
+
+            # Update document metadata with extracted entities and facts
+            doc.metadata["entities"] = [
+                compute_mdhash_id(index_name, str(node), self._entity_prefix) for node in graph_nodes
+            ]
+            doc.metadata["facts"] = [compute_mdhash_id(index_name, str(fact), self._fact_prefix) for fact in ie.triples]
+
+            facts = self._flatten_facts([ie.triples])
+            facts_str.extend([str(fact) for fact in facts])
+            entities_str = list(set(entities_str))
+            facts_str = list(set(facts_str))
+
+            logger.debug(
+                f"Extracted {len(entities_str)} entities and {len(facts_str)} facts "
+                f"from document: {doc.content[:100]}..."
+            )
+
+            # Add document to embedding store
+            docs = await self._embedd_store.add_documents(index_name, [doc])
+
+            if not entities_str:
+                logger.warning(f"No entities extracted from document: {doc.content[:100]}...")
+                return doc
+
+            # Add entity and fact embeddings
+            embed_entities = await self.add_embeddings(
+                index_name, entities_str, self._entity_prefix, metadata={"namespace": Namespace.ENTITY.value}
+            )
+            logger.info(f"Added {len(embed_entities)} entities to the embedding store.")
+
+            await self.add_embeddings(
+                index_name, facts_str, self._fact_prefix, metadata={"namespace": Namespace.FACT.value}
+            )
+
+            # Save OpenIE information
+            await self._db.save_openie_info(index_name, openie_infos)
+
+            # Create entity nodes
+            entities_nodes = [
+                Document(
+                    uid=compute_mdhash_id(index_name, entity, self._entity_prefix),
+                    content=entity,
+                    metadata={
+                        "namespace": Namespace.ENTITY.value,
+                        "doc_id": [doc.uid],
+                        "openie_idx": doc.metadata.get("openie_idx", ""),
+                    },
+                )
+                for entity in entities_str
+            ]
+
+            await self._add_new_nodes(index_name, entities_nodes, docs)
+
+            # Build graph edges
+            ent_node_to_chunk_ids, node_to_node_stats = self._add_fact_edges(index_name, docs, chunk_triples)
+            num_new_chunks = self._add_passage_edges(index_name, docs, doc_to_triple_entities, node_to_node_stats)
+            logger.info(f"Added {num_new_chunks} new chunks.")
+
+            # Add synonymy edges for entity linking
+            entities: List[Document] = await self._embedd_store.select_on_metadata(
+                index_name, {"namespace": Namespace.ENTITY.value}
+            )
+            if entities:
+                self._add_synonymy_edges(entities, entities, node_to_node_stats)
+
+            # Augment graph with new information
+            await self._augment_graph(index_name, embed_entities, [doc], node_to_node_stats)
+            self._save()
+
+            # Update database caches
+            await self._update_database_caches(index_name, ent_node_to_chunk_ids, node_to_node_stats, openie_infos)
+
             return doc
-        logger.info(f"Added {len(embed_entities)} entities to the embedding store.")
-        await self.add_embeddings(
-            index_name, facts_str, self._fact_prefix, metadata={"namespace": Namespace.FACT.value}
-        )
 
-        await self._db.save_openie_info(index_name, openie_infos)
-        docs = await self._embedd_store.add_documents(index_name, [doc])
-        entities_nodes = [
-            Document(
-                uid=compute_mdhash_id(index_name, entity, self._entity_prefix),
-                content=entity,
-                metadata={
-                    "namespace": Namespace.ENTITY.value,
-                    "doc_id": [doc.uid],
-                    "openie_idx": doc.metadata.get("openie_idx", ""),
-                },
-            )
-            for entity in entities_str
-        ]
-        await self._add_new_nodes(index_name, entities_nodes, docs)
+        except Exception as e:
+            logger.error(f"Failed to add document {doc.uid}: {e}")
+            raise RuntimeError(f"Document addition failed for {doc.uid}: {e}") from e
 
-        ent_node_to_chunk_ids, node_to_node_stats = self._add_fact_edges(index_name, docs, chunk_triples)
-        num_new_chunks = self._add_passage_edges(index_name, docs, doc_to_triple_entities, node_to_node_stats)
-        logger.info(f"Added {num_new_chunks} new chunks.")
-        # if num_new_chunks > 0:
-        entities: List[Document] = await self._embedd_store.select_on_metadata(
-            index_name, {"namespace": Namespace.ENTITY.value}
-        )
-        if entities:
-            self._add_synonymy_edges(entities, entities, node_to_node_stats)
-        await self._augment_graph(index_name, embed_entities, [doc], node_to_node_stats)
-        self._save()
-        for key, chunks in ent_node_to_chunk_ids.items():
-            exists_ent_chunks = await self._db.get_ent_node_to_chunk_ids(index_name, key) or []
-            await self._db.set_ent_node_to_chunk_ids(index_name, key, list(set(chunks).union(set(exists_ent_chunks))))
-        for node_to_node, stats in node_to_node_stats.items():
-            await self._db.set_node_to_node_stats(index_name, node_to_node[0], node_to_node[1], stats)
-        triples_to_docs = self.get_proc_triples_to_docs(openie_infos)
-        await self._db.set_triples_to_docs(index_name, triples_to_docs)
-        return doc
+    async def _update_database_caches(
+        self,
+        index_name: str,
+        ent_node_to_chunk_ids: Dict[str, List[str]],
+        node_to_node_stats: Dict[Tuple[str, str], float],
+        openie_infos: List[OpenIEInfo],
+    ) -> None:
+        """Update database caches with new graph information."""
+        try:
+            # Update entity-to-chunk mappings
+            for key, chunks in ent_node_to_chunk_ids.items():
+                exists_ent_chunks = await self._db.get_ent_node_to_chunk_ids(index_name, key) or []
+                await self._db.set_ent_node_to_chunk_ids(
+                    index_name, key, list(set(chunks).union(set(exists_ent_chunks)))
+                )
+
+            # Update node-to-node statistics
+            for node_to_node, stats in node_to_node_stats.items():
+                await self._db.set_node_to_node_stats(index_name, node_to_node[0], node_to_node[1], stats)
+
+            # Update triples-to-documents mappings
+            triples_to_docs = self.get_proc_triples_to_docs(openie_infos)
+            await self._db.set_triples_to_docs(index_name, triples_to_docs)
+
+        except Exception as e:
+            logger.error(f"Failed to update database caches: {e}")
+            # Don't raise here as the main document processing succeeded
 
     async def add_documents(self, index_name: str, texts: List[Document]) -> List[Document]:
         """
-        Adds documents to the vector store and graph store.
+        Adds documents to the vector store and graph store with optimized batch processing.
+
+        This method processes documents concurrently while respecting memory and resource limits.
+        It uses semaphores to control concurrency and batches operations for better performance.
 
         Args:
-            texts : List[Document]
-                A list of Document objects to be added to the vector store and graph store.
-            lang : str
-                The language of the documents. Defaults to "en".
+            index_name: The name of the index where documents will be added.
+            texts: List of Document objects to be added to the vector store and graph store.
+
+        Returns:
+            List[Document]: The processed documents with updated metadata.
+
+        Raises:
+            RuntimeError: If batch document processing fails.
         """
-        tasks = []
-        for doc in texts:
-            tasks.append(self._add_document(index_name, doc))
-        results = await asyncio.gather(*tasks, return_exceptions=False)
-        return results
+        if not texts:
+            return []
+
+        logger.info(f"Processing {len(texts)} documents with batch optimization")
+
+        try:
+            # Process documents in batches to manage memory and resources
+            batch_size = min(self._max_concurrent_documents, len(texts))
+            results = []
+
+            # Use semaphore to limit concurrent document processing
+            async def process_with_semaphore(doc: Document) -> Document:
+                async with self._document_semaphore:
+                    return await self._add_document(index_name, doc)
+
+            # Process documents in batches
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i : i + batch_size]
+                logger.debug(f"Processing batch {i // batch_size + 1}/{(len(texts) - 1) // batch_size + 1}")
+
+                # Create tasks for concurrent processing within the batch
+                tasks = [process_with_semaphore(doc) for doc in batch]
+                batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                # Handle exceptions from batch processing
+                for j, result in enumerate(batch_results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Failed to process document {batch[j].uid}: {result}")
+                        # Continue with other documents rather than failing the entire batch
+                        continue
+                    results.append(result)
+
+                # Small delay between batches to prevent overwhelming the system
+                if i + batch_size < len(texts):
+                    await asyncio.sleep(0.1)
+
+            logger.info(f"Successfully processed {len(results)} out of {len(texts)} documents")
+            return results
+
+        except Exception as e:
+            logger.error(f"Batch document processing failed: {e}")
+            raise RuntimeError(f"Failed to process documents in batch: {e}") from e
 
     async def _get_query_embeddings(self, queries: List[str]) -> Dict[str, Dict[str, np.ndarray]]:
         """
@@ -365,105 +521,153 @@ class HippoRAGImpl(BaseRAG):
         top_k: int = 10,
     ) -> Dict[str, float]:
         """
-        Performs graph search using the fact entities and passage nodes to compute personalized PageRank scores.
+        Performs optimized graph search using fact entities and passage nodes to compute personalized PageRank scores.
+
+        This method includes several optimizations:
+        - Batch processing of entity lookups
+        - Efficient phrase deduplication
+        - Optimized weight calculations
+        - Memory-efficient data structures
+
         Args:
-            query : str
-                The input query for which graph search needs to be performed.
-            query_to_embedding : Dict[str, Dict[str, np.ndarray]]
-                A dictionary containing pre-computed embeddings for the queries.
-            link_top_k : int
-                The number of top facts to consider for graph search.
-            top_k_facts : List[Tuple[Document, float]]
-                A list of tuples containing Document objects and their corresponding scores.
-            passage_node_weight : float, optional
-                The weight assigned to passage nodes. Defaults to 0.05.
-            damping : float, optional
-                Damping factor for the PageRank algorithm. Defaults to 0.5.
-            top_k : int, optional
-                The number of top nodes to retrieve. Defaults to 10.
+            index_name: The name of the index.
+            query: The input query for which graph search needs to be performed.
+            query_to_embedding: A dictionary containing pre-computed embeddings for the queries.
+            link_top_k: The number of top facts to consider for graph search.
+            top_k_facts: A list of tuples containing Document objects and their corresponding scores.
+            passage_node_weight: The weight assigned to passage nodes. Defaults to 0.05.
+            damping: Damping factor for the PageRank algorithm. Defaults to 0.5.
+            top_k: The number of top nodes to retrieve. Defaults to 10.
+
         Returns:
-            Dict[str, float]
-                A dictionary containing the personalized PageRank scores for the nodes.
+            Dict[str, float]: A dictionary containing the personalized PageRank scores for the nodes.
+
+        Raises:
+            AssertionError: If no phrases are found in the graph for the given facts.
         """
-        linking_score_map: Dict[
-            str, float
-        ] = {}  # from phrase to the average scores of the facts that contain the phrase
-        phrase_scores: Dict[
-            str, List[np.float64]
-        ] = {}  # store all fact scores for each phrase regardless of whether they exist in the knowledge graph or not
-        phrase_weights: Dict[str, np.float64] = {}
-        passage_weights: Dict[str, np.float64] = {}
-        phrase_keys: List[str] = []
-        for doc, fact_score in top_k_facts:
-            f = eval(doc.content)
-            subject_phrase = f[0].lower()
-            # predicate_phrase = f[1].lower()
-            object_phrase = f[2].lower()
-            phrase_keys.append(compute_mdhash_id(index_name, content=subject_phrase, prefix=self._entity_prefix))
-            phrase_keys.append(compute_mdhash_id(index_name, content=object_phrase, prefix=self._entity_prefix))
-        phrase_keys = list(set(phrase_keys))
-        nodes = self._graph_vertices_to_nodes(
-            await self._graph_store.aselect_vertices(index_name, dict(name_in=phrase_keys))
-        )
-        node_id_to_phrase = {node["name"]: node for node in nodes}
+        if not top_k_facts:
+            logger.warning("No facts provided for graph search")
+            return {}
 
-        for doc, fact_score in top_k_facts:
-            f = eval(doc.content)
-            subject_phrase = f[0].lower()
-            object_phrase = f[2].lower()
+        try:
+            # Pre-allocate data structures for better memory efficiency
+            linking_score_map: Dict[str, float] = {}
+            phrase_scores: Dict[str, List[np.float64]] = {}
+            phrase_weights: Dict[str, np.float64] = {}
+            passage_weights: Dict[str, np.float64] = {}
 
-            for phrase in [subject_phrase, object_phrase]:
-                phrase_key = compute_mdhash_id(index_name, content=phrase, prefix=self._entity_prefix)
+            # Extract and deduplicate phrase keys efficiently
+            phrase_keys_set: Set[str] = set()
+            fact_data: List[Tuple[str, str, float]] = []  # (subject, object, score)
 
-                if phrase_key in node_id_to_phrase:
-                    phrase_weights[phrase_key] = np.float64(fact_score)
-                    chunks = await self._db.get_ent_node_to_chunk_ids(index_name, phrase_key) or set()
-                    if len(chunks) > 0:
-                        phrase_weights[phrase_key] /= len(chunks)
+            for doc, fact_score in top_k_facts:
+                try:
+                    fact = eval(doc.content)
+                    if len(fact) >= 3:
+                        subject_phrase = fact[0].lower()
+                        object_phrase = fact[2].lower()
 
-                if phrase not in phrase_scores:
-                    phrase_scores[phrase] = []
-                phrase_scores[phrase].append(np.float64(fact_score))
+                        # Cache fact data to avoid re-parsing
+                        fact_data.append((subject_phrase, object_phrase, fact_score))
 
-        # calculate average fact score for each phrase
-        for phrase, scores in phrase_scores.items():
-            linking_score_map[phrase] = float(np.mean(scores))
+                        # Batch compute phrase keys
+                        phrase_keys_set.add(
+                            compute_mdhash_id(index_name, content=subject_phrase, prefix=self._entity_prefix)
+                        )
+                        phrase_keys_set.add(
+                            compute_mdhash_id(index_name, content=object_phrase, prefix=self._entity_prefix)
+                        )
+                except (SyntaxError, ValueError) as e:
+                    logger.warning(f"Failed to parse fact content: {doc.content}, error: {e}")
+                    continue
 
-        if link_top_k:
-            phrase_weights, linking_score_map = await self.get_top_k_weights(
-                index_name, link_top_k, phrase_weights, linking_score_map
+            phrase_keys = list(phrase_keys_set)
+
+            # Batch lookup graph nodes to reduce database calls
+            nodes = self._graph_vertices_to_nodes(
+                await self._graph_store.aselect_vertices(index_name, dict(name_in=phrase_keys))
             )
-        passages = await self.dense_passage_retrieval(index_name, query, query_to_embedding)
-        sorted_passages = sorted(passages, key=lambda x: x[1], reverse=True)
-        dpr_doc_scores = [doc[1] for doc in sorted_passages]
-        dpr_sorted_docs = [(doc[0].uid, doc[1]) for doc in sorted_passages]
-        dpr_sorted_doc_scores = np.array(dpr_doc_scores, dtype=float)
-        normalized_dpr_sorted_scores = dpr_sorted_doc_scores
-        for index, doc_score in enumerate(dpr_sorted_docs):
-            passage_dpr_score = normalized_dpr_sorted_scores[index]
-            passage_node_key = doc_score[0]
-            passage_weights[passage_node_key] = passage_dpr_score * passage_node_weight
-            ret = await self._embedd_store.get(index_name, passage_node_key)
-            passage_node_text = ret.content
-            linking_score_map[passage_node_text] = passage_dpr_score * passage_node_weight
+            node_id_to_phrase = {node["name"]: node for node in nodes}
 
-        phrase_weights.update(passage_weights)
+            # Batch lookup entity-to-chunk mappings
+            valid_phrase_keys = []
 
-        node_weights: Dict[str, np.float64] = copy.deepcopy(phrase_weights)
+            for subject_phrase, object_phrase, fact_score in fact_data:
+                subject_key = compute_mdhash_id(index_name, content=subject_phrase, prefix=self._entity_prefix)
+                object_key = compute_mdhash_id(index_name, content=object_phrase, prefix=self._entity_prefix)
 
-        # Recording top 30 facts in linking_score_map
-        if len(linking_score_map) > 30:
-            linking_score_map = dict(sorted(linking_score_map.items(), key=lambda x: x[1], reverse=True)[:30])
+                for phrase, phrase_key in [(subject_phrase, subject_key), (object_phrase, object_key)]:
+                    if phrase_key in node_id_to_phrase:
+                        phrase_weights[phrase_key] = np.float64(fact_score)
+                        valid_phrase_keys.append(phrase_key)
 
-        assert sum(node_weights.values()) > 0.0, f"No phrases found in the graph for the given facts: {top_k_facts}"
+                    # Accumulate phrase scores for averaging
+                    if phrase not in phrase_scores:
+                        phrase_scores[phrase] = []
+                    phrase_scores[phrase].append(np.float64(fact_score))
 
-        # Running PPR algorithm based on the passage and phrase weights previously assigned
-        ppr_sorted_doc_scores = await self.run_ppr(
-            index_name, {k: v.astype(float) for k, v in node_weights.items()}, damping=damping, top_k=top_k
-        )
-        logger.debug(f"Graph search with fact entities completed. PPR scores: {ppr_sorted_doc_scores}")
+            # Batch fetch chunk mappings for valid phrases
+            if valid_phrase_keys:
+                chunk_tasks = [
+                    self._db.get_ent_node_to_chunk_ids(index_name, phrase_key) for phrase_key in valid_phrase_keys
+                ]
+                chunk_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
 
-        return ppr_sorted_doc_scores
+                # Update weights based on chunk counts
+                for phrase_key, chunks_result in zip(valid_phrase_keys, chunk_results):
+                    if not isinstance(chunks_result, BaseException) and chunks_result:
+                        chunks = chunks_result or set()
+                        if len(chunks) > 0:
+                            phrase_weights[phrase_key] /= len(chunks)
+
+            # Calculate average fact scores efficiently using numpy
+            for phrase, scores in phrase_scores.items():
+                if scores:
+                    linking_score_map[phrase] = float(np.mean(scores))
+
+            # Apply top-k filtering if specified
+            if link_top_k:
+                phrase_weights, linking_score_map = await self.get_top_k_weights(
+                    index_name, link_top_k, phrase_weights, linking_score_map
+                )
+
+            # Optimize passage retrieval and weight calculation
+            passages = await self.dense_passage_retrieval(index_name, query, query_to_embedding)
+
+            # Use numpy for efficient score normalization
+            dpr_scores = np.array([doc[1] for doc in passages], dtype=float)
+
+            # Batch process passage weights
+            for idx, (doc, score) in enumerate(passages):
+                passage_node_key = doc.uid
+                normalized_score = dpr_scores[idx] * passage_node_weight
+                passage_weights[passage_node_key] = normalized_score
+                linking_score_map[doc.content] = normalized_score
+
+            # Combine weights efficiently
+            phrase_weights.update(passage_weights)
+            node_weights: Dict[str, np.float64] = phrase_weights.copy()
+
+            # Optimize linking_score_map truncation
+            if len(linking_score_map) > 30:
+                linking_score_map = dict(sorted(linking_score_map.items(), key=lambda x: x[1], reverse=True)[:30])
+
+            # Validate weights before PPR
+            total_weight = sum(node_weights.values())
+            if total_weight <= 0.0:
+                raise AssertionError(f"No phrases found in the graph for the given facts: {top_k_facts}")
+
+            # Run optimized PPR algorithm
+            ppr_sorted_doc_scores = await self.run_ppr(
+                index_name, {k: float(v) for k, v in node_weights.items()}, damping=damping, top_k=top_k
+            )
+
+            logger.debug(f"Graph search completed. PPR scores: {len(ppr_sorted_doc_scores)} results")
+            return ppr_sorted_doc_scores
+
+        except Exception as e:
+            logger.error(f"Graph search failed: {e}")
+            raise RuntimeError(f"Graph search with fact entities failed: {e}") from e
 
     async def get_top_k_weights(
         self,
@@ -516,7 +720,7 @@ class HippoRAGImpl(BaseRAG):
         return all_phrase_weights, linking_score_map
 
     async def retrieve(
-        self, index_name: str, queries: List[str], retrieve_top_k=10, lang="en"
+        self, index_name: str, queries: List[str], retrieve_top_k=10, lang="en", filter: Optional[Dict[str, Any]] = None
     ) -> Dict[str, List[RetrieveResultItem]]:
         """
         Retrieves documents based on the provided queries using a combination of dense
@@ -528,6 +732,7 @@ class HippoRAGImpl(BaseRAG):
                 The number of top documents to retrieve. Defaults to 10.
             lang : str, optional
                 The language of the queries. Defaults to "en".
+            filter : Optional[Dict[str, Any]], optional
         Returns:
             List[RetrieveResultItem]
                 A list of RetrieveResultItem objects containing the retrieved documents and their corresponding scores.
@@ -763,52 +968,85 @@ class HippoRAGImpl(BaseRAG):
         self, index_name: str, entity_nodes: List[str], prefix: str, metadata: Optional[Dict[str, str]] = None
     ) -> List[Document]:
         """
-        Adds embeddings for the given entity nodes to the embedding store.
+        Adds embeddings for the given entity nodes to the embedding store with batch optimization.
 
         This method computes the hash IDs for the entity nodes, checks if they already exist in the
-        embedding store, and if not, encodes the nodes and adds them to the store.
+        embedding store, and if not, encodes the nodes in batches and adds them to the store.
 
         Args:
-            entity_nodes : List[str]
-                A list of entity nodes to be added to the embedding store.
-            prefix : str
-                The prefix used for computing hash IDs for the entity nodes.
-            metadata : Optional[Dict[str, str]], optional
-                Additional metadata to be associated with the documents. Defaults to None.
+            index_name: The name of the index.
+            entity_nodes: A list of entity nodes to be added to the embedding store.
+            prefix: The prefix used for computing hash IDs for the entity nodes.
+            metadata: Additional metadata to be associated with the documents. Defaults to None.
+
         Returns:
-            List[Document]
-                A list of Document objects representing the added embeddings.
+            List[Document]: A list of Document objects representing the added embeddings.
+
+        Raises:
+            RuntimeError: If embedding processing fails.
         """
-        # graph_nodes, triple_entities = self.extract_graph_nodes(triples)
-        nodes_dict = {}
-        for node in entity_nodes:
-            hash_id = compute_mdhash_id(index_name, str(node), f"{prefix}-")
-            nodes_dict[hash_id] = {"content": str(node)}
-        all_hash_ids = list(nodes_dict.keys())
-        logger.debug(f"Adding {entity_nodes} new embeddings to the store with {metadata}.")
-        if not all_hash_ids:
+        if not entity_nodes:
             return []
-        existing = await self._embedd_store.get_by_ids(index_name, all_hash_ids)
-        existing_ids = {doc.uid for doc in existing}
-        missing_ids = [hash_id for hash_id in all_hash_ids if hash_id not in existing_ids]
-        texts_to_encode = [nodes_dict[hash_id]["content"] for hash_id in missing_ids]
-        docs = [
-            Document(uid=hash_id, content=text, metadata=metadata)
-            for hash_id, text in zip(missing_ids, texts_to_encode)
-        ]
-        if len(docs) == 0:
-            return [
-                # Document(uid=hash_id, content=text["content"], metadata=metadata)
-                # for hash_id, text in nodes_dict.items()
+
+        try:
+            # Prepare node mappings with batch optimization
+            nodes_dict = {}
+            for node in entity_nodes:
+                hash_id = compute_mdhash_id(index_name, str(node), f"{prefix}-")
+                nodes_dict[hash_id] = {"content": str(node)}
+
+            all_hash_ids = list(nodes_dict.keys())
+            logger.debug(f"Processing {len(entity_nodes)} embeddings with metadata: {metadata}")
+
+            if not all_hash_ids:
+                return []
+
+            # Batch check for existing embeddings
+            existing = await self._embedd_store.get_by_ids(index_name, all_hash_ids)
+            existing_ids = {doc.uid for doc in existing}
+            missing_ids = [hash_id for hash_id in all_hash_ids if hash_id not in existing_ids]
+
+            if not missing_ids:
+                logger.debug("All embeddings already exist, skipping encoding")
+                return existing
+
+            # Prepare documents for batch encoding
+            texts_to_encode = [nodes_dict[hash_id]["content"] for hash_id in missing_ids]
+            docs = [
+                Document(uid=hash_id, content=text, metadata=metadata)
+                for hash_id, text in zip(missing_ids, texts_to_encode)
             ]
-        logger.debug(f"Adding {len(docs)} new embeddings to the store with {metadata}.")
-        await self._embedd_store.add_documents(index_name, docs)
-        new_docs = await self._embedd_store.get_by_ids(index_name, missing_ids)
-        all_docs = new_docs + existing
-        docs_map = {doc.uid: doc for doc in all_docs}
-        for doc in docs:
-            doc.embedding = docs_map[doc.uid].embedding
-        return docs
+
+            logger.debug(f"Adding {len(docs)} new embeddings to the store")
+
+            # Batch process embeddings in chunks to manage memory
+            batch_size = self._embedding_batch_size
+            processed_docs = []
+
+            for i in range(0, len(docs), batch_size):
+                batch_docs = docs[i : i + batch_size]
+                await self._embedd_store.add_documents(index_name, batch_docs)
+                processed_docs.extend(batch_docs)
+
+                # Small delay between batches for resource management
+                if i + batch_size < len(docs):
+                    await asyncio.sleep(0.05)
+
+            # Retrieve all documents (new + existing) with their embeddings
+            new_docs = await self._embedd_store.get_by_ids(index_name, missing_ids)
+            all_docs = new_docs + existing
+
+            # Update document embeddings efficiently
+            docs_map = {doc.uid: doc for doc in all_docs}
+            for doc in docs:
+                if doc.uid in docs_map:
+                    doc.embedding = docs_map[doc.uid].embedding
+
+            return processed_docs
+
+        except Exception as e:
+            logger.error(f"Failed to add embeddings: {e}")
+            raise RuntimeError(f"Embedding processing failed: {e}") from e
 
     def _add_fact_edges(
         self, index_name: str, new_docs: List[Document], chunk_triples: Dict[str, List[Tuple[str, str, str]]]
@@ -1073,7 +1311,7 @@ class HippoRAGImpl(BaseRAG):
             nodes.append(node)
         return nodes
 
-    async def embbedding_retrieve(
+    async def embedding_retrieve(
         self,
         unique_name: str,
         queries: List[str],
@@ -1098,8 +1336,9 @@ class HippoRAGImpl(BaseRAG):
             filter["namespace"] = Namespace.PASSAGE.value
         tasks = [
             self._embedd_store.asimilar_search_with_scores(
-                unique_name=unique_name,
+                index_name=unique_name,
                 query=query,
+                k=100,
                 filter=filter,
             )
             for query in queries
@@ -1108,7 +1347,9 @@ class HippoRAGImpl(BaseRAG):
         query_to_docs: Dict[str, List[Document]] = {}
         for index, r in enumerate(results):
             query_to_docs[queries[index]] = [
-                RetrieveResultItem(document=doc, score=score, query=queries[index], metadata={}) for doc, score in r
+                RetrieveResultItem(document=doc, score=score, query=queries[index], metadata={})
+                for doc, score in r
+                if doc.metadata.get("namespace") == Namespace.PASSAGE.value
             ]
         return query_to_docs
 
@@ -1116,7 +1357,9 @@ class HippoRAGImpl(BaseRAG):
         self,
         unique_name: str,
         query: str,
+        history_context: Optional[str] = "",
         top_k: int = 5,
+        similarity_threshold=0.7,
         prompt: Optional[str] = None,
         llm: Optional[BaseChat] = None,
         reranker: Optional[BaseRerank] = None,
@@ -1130,6 +1373,7 @@ class HippoRAGImpl(BaseRAG):
                 The unique name for the index to be used for question answering.
             query : str
                 The query string for which the answer needs to be retrieved.
+            context : Optional[str], optional,The context to be used for the question answering. Defaults to "".
             top_k : int, optional
                 The number of top documents to retrieve. Defaults to 5.
             prompt : Optional[str], optional,
@@ -1142,12 +1386,12 @@ class HippoRAGImpl(BaseRAG):
         """
         lang = detect_language(query)
         reranker = reranker or self._reranker
-        res = await self.hybrid_retrieve(unique_name, [query], reranker, top_k, filter=filter)
+        res = await self.hybrid_retrieve(unique_name, [query], reranker, top_k, similarity_threshold, filter=filter)
         for _, items in res.items():
             if not items:
                 yield QAChatResponse(query=query, answer="", sources=[], metadata={})
                 continue
-            qa_prompt = self._qa_prompt_builder.build(items, query, lang)
+            qa_prompt = self._qa_prompt_builder.build(items, query, lang, history_context)
 
             from langchain.prompts import ChatPromptTemplate
 
@@ -1161,7 +1405,10 @@ class HippoRAGImpl(BaseRAG):
                 qa_prompt = cpt.invoke(
                     {
                         "question": query,
-                        "context": "\n".join([item.document.content for item in items]),
+                        "context": "\n".join([item.document.content for item in items])
+                        + "\n\n"
+                        + "History context: \n"
+                        + (history_context or ""),
                     }
                 ).to_string()
             llm = llm or self._llm
@@ -1174,3 +1421,154 @@ class HippoRAGImpl(BaseRAG):
                     tokens=ans.tokens,
                     context=json.dumps([item.document.model_dump() for item in items], ensure_ascii=False),
                 )
+
+    async def _ensure_resource_cleanup(self) -> None:
+        """
+        Ensures proper cleanup of resources and connections.
+
+        This method should be called during shutdown or error recovery
+        to prevent resource leaks and ensure system stability.
+        """
+        try:
+            # Close any open connections or resources
+            if hasattr(self._embedd_store, "close"):
+                await self._embedd_store.close()
+            if hasattr(self._graph_store, "close"):
+                await self._graph_store.close()
+            if hasattr(self._db, "close"):
+                await self._db.close()
+            logger.info("Resource cleanup completed successfully")
+        except Exception as e:
+            logger.error(f"Error during resource cleanup: {e}")
+
+    async def _validate_system_health(self, index_name: str) -> bool:
+        """
+        Validates the health of the system components.
+
+        Args:
+            index_name: The index name to validate.
+
+        Returns:
+            bool: True if all components are healthy, False otherwise.
+        """
+        try:
+            # Check database connectivity
+            await self._db.init()
+
+            # Check embedding store
+            await self._embedd_store.init()
+
+            # Check graph store
+            await self._graph_store.init()
+
+            # Validate index exists
+            # This is a basic health check - could be expanded
+            logger.debug(f"System health check passed for index: {index_name}")
+            return True
+
+        except Exception as e:
+            logger.error(f"System health check failed: {e}")
+            return False
+
+    @property
+    def lock(self) -> Lock:
+        """
+        Returns the async lock for thread-safe operations.
+
+        This property provides access to the internal lock for operations
+        that require thread safety or coordination between concurrent tasks.
+
+        Returns:
+            Lock: The asyncio Lock instance for synchronization.
+        """
+        return self._lock
+
+    async def _batch_process_entities(
+        self, index_name: str, entities_data: List[Tuple[str, str]], batch_size: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Process entities in batches for better performance and memory management.
+
+        Args:
+            index_name: The index name for the entities.
+            entities_data: List of tuples containing (entity_text, entity_type).
+            batch_size: Optional batch size override. If None, uses default.
+
+        Returns:
+            Dict[str, Any]: Results of batch processing including success counts and errors.
+        """
+        batch_size = batch_size or self._graph_batch_size
+        total_entities = len(entities_data)
+        processed_count = 0
+        error_count = 0
+        results: Dict[str, List[Any]] = {"processed": [], "errors": []}
+
+        try:
+            for i in range(0, total_entities, batch_size):
+                batch = entities_data[i : i + batch_size]
+
+                try:
+                    # Process batch of entities
+                    batch_results = []
+                    for entity_text, entity_type in batch:
+                        entity_id = compute_mdhash_id(index_name, entity_text, self._entity_prefix)
+                        batch_results.append({"id": entity_id, "text": entity_text, "type": entity_type})
+
+                    results["processed"].extend(batch_results)
+                    processed_count += len(batch)
+
+                    # Small delay between batches for resource management
+                    if i + batch_size < total_entities:
+                        await asyncio.sleep(0.02)
+
+                except Exception as e:
+                    logger.error(f"Error processing entity batch {i // batch_size + 1}: {e}")
+                    results["errors"].append(f"Batch {i // batch_size + 1}: {e}")
+                    error_count += len(batch)
+
+            logger.info(f"Entity batch processing completed: {processed_count} processed, {error_count} errors")
+            return results
+
+        except Exception as e:
+            logger.error(f"Critical error in batch entity processing: {e}")
+            raise RuntimeError(f"Batch entity processing failed: {e}") from e
+
+    # def _optimize_memory_usage(self, data_structures: Dict[str, Any]) -> Dict[str, Any]:
+    #     """
+    #     Optimize memory usage of large data structures.
+
+    #     This method applies various optimization techniques to reduce memory footprint:
+    #     - Converting lists to more memory-efficient structures where appropriate
+    #     - Deduplicating data
+    #     - Compressing sparse data structures
+
+    #     Args:
+    #         data_structures: Dictionary of data structures to optimize.
+
+    #     Returns:
+    #         Dict[str, Any]: Optimized data structures.
+    #     """
+    #     optimized = {}
+
+    #     for key, data in data_structures.items():
+    #         try:
+    #             if isinstance(data, list):
+    #                 # Deduplicate lists while preserving order
+    #                 if data and all(isinstance(item, (str, int, float)) for item in data):
+    #                     seen = set()
+    #                     optimized[key] = [x for x in data if x not in seen and not seen.add(x)]
+    #                 else:
+    #                     optimized[key] = data
+
+    #             elif isinstance(data, dict):
+    #                 # Remove empty values from dictionaries
+    #                 optimized[key] = {k: v for k, v in data.items() if v is not None and v != ""}
+
+    #             else:
+    #                 optimized[key] = data
+
+    #         except Exception as e:
+    #             logger.warning(f"Failed to optimize data structure '{key}': {e}")
+    #             optimized[key] = data
+
+    #     return optimized

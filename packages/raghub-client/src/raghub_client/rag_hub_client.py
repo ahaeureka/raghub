@@ -3,6 +3,7 @@ Auto-generated gRPC FastAPI client
 Generated from services.json
 """
 
+import asyncio
 import json
 import logging
 from typing import Any, AsyncGenerator, Dict, Optional
@@ -100,16 +101,25 @@ class RAGHubClient:
                     raise httpx.HTTPStatusError(
                         f"HTTP {response.status_code}", request=response.request, response=response
                     )
-
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]  # Remove "data: " prefix
-                        if data_str.strip():
-                            try:
-                                data = json.loads(data_str)
-                                yield CreateChatCompletionResponse(**data)
-                            except (json.JSONDecodeError, ValidationError) as e:
-                                logger.error(f"Failed to parse SSE data: {e} with {data_str}")
+                try:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:]  # Remove "data: " prefix
+                            if data_str.strip():
+                                try:
+                                    data = json.loads(data_str)
+                                    yield CreateChatCompletionResponse(**data)
+                                except (json.JSONDecodeError, ValidationError) as e:
+                                    if data_str.startswith("data") and len(line) > 6:
+                                        logger.error(f"Failed to parse SSE data: {e} with {line}")
+                                        raise ValueError(f"Invalid SSE data: {line}") from e
+                except asyncio.CancelledError:
+                    logger.warning("Stream cancelled, closing connection.")
+                    await response.aclose()
+                    await client.aclose()
+                except Exception as e:
+                    logger.error(f"Error during streaming: {e}")
+                    raise httpx.HTTPStatusError(f"Streaming error: {e}", request=response.request, response=response)
 
     async def rag_service_add_documents(
         self, request: AddDocumentsRequest, headers: Optional[Dict[str, Any]] = None
@@ -138,6 +148,7 @@ class RAGHubClient:
             response = await client.delete(url, params=request.model_dump(exclude_none=True), headers=request_headers)
 
             if response.status_code >= 400:
+                print(f"HTTP {response.status_code} error: {response.text}")
                 raise httpx.HTTPStatusError(f"HTTP {response.status_code}", request=response.request, response=response)
 
             data = response.json()

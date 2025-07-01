@@ -22,7 +22,12 @@ from raghub_protos.models.rag_model import (
     RetrievalRequest,
 )
 
-from .config import TestConfig
+# 使用绝对导入避免模块路径冲突
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+from config import TestConfig
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +35,21 @@ logger = logging.getLogger(__name__)
 class BaseRAGTest:
     """RAG 测试基类"""
 
-    def __init__(self):
+    def __init__(self, use_shared_index: bool = False):
         self.client = RAGHubClient(**TestConfig.get_client_config())
-        self.test_knowledge_id = f"{TestConfig.TEST_KNOWLEDGE_ID}_{uuid.uuid4().hex[:8]}"
-        self.test_index_name = f"{TestConfig.TEST_INDEX_NAME}_{uuid.uuid4().hex[:8]}"
+
+        if use_shared_index:
+            # 使用固定的共享索引名称
+            self.test_knowledge_id = f"{TestConfig.TEST_KNOWLEDGE_ID}_shared"
+            self.test_index_name = f"{TestConfig.TEST_INDEX_NAME}_shared"
+        else:
+            # 使用唯一的索引名称
+            self.test_knowledge_id = f"{TestConfig.TEST_KNOWLEDGE_ID}_{uuid.uuid4().hex[:8]}"
+            self.test_index_name = f"{TestConfig.TEST_INDEX_NAME}_{uuid.uuid4().hex[:8]}"
+
         self.created_indices: List[str] = []
         self.added_document_ids: List[str] = []
+        self._is_shared = use_shared_index
 
     async def setup_test_environment(self):
         """设置测试环境"""
@@ -51,6 +65,11 @@ class BaseRAGTest:
 
     async def cleanup_test_environment(self):
         """清理测试环境"""
+        if self._is_shared:
+            # 共享索引模式下，只在最后清理
+            logger.info(f"共享索引模式，跳过清理: knowledge_id={self.test_knowledge_id}")
+            return
+
         logger.info(f"清理测试环境: knowledge_id={self.test_knowledge_id}")
         try:
             # 删除添加的文档
@@ -58,6 +77,15 @@ class BaseRAGTest:
                 await self.delete_test_documents()
         except Exception as e:
             logger.warning(f"清理测试环境失败: {e}")
+
+    async def force_cleanup(self):
+        """强制清理测试环境（包括共享索引）"""
+        logger.info(f"强制清理测试环境: knowledge_id={self.test_knowledge_id}")
+        try:
+            if self.added_document_ids:
+                await self.delete_test_documents()
+        except Exception as e:
+            logger.warning(f"强制清理测试环境失败: {e}")
 
     async def create_test_index(self):
         """创建测试索引"""

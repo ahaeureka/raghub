@@ -1,6 +1,8 @@
+import traceback
 from abc import abstractmethod
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
 from raghub_core.rag.base_rag import BaseRAG
 from raghub_core.rerank.base_rerank import BaseRerank
@@ -8,6 +10,8 @@ from raghub_core.schemas.chat_response import QAChatResponse
 from raghub_core.schemas.document import Document
 from raghub_core.schemas.rag_model import RetrieveResultItem
 from raghub_core.utils.class_meta import SingletonRegisterMeta
+
+from raghub_app.app_schemas.history_context import HistoryContext
 
 
 class BaseRAGApp(metaclass=SingletonRegisterMeta):
@@ -62,7 +66,8 @@ class BaseRAGApp(metaclass=SingletonRegisterMeta):
         unique_name: str,
         queries: List[str],
         reranker: Optional[BaseRerank] = None,
-        similarity_threshold: float = 0.5,
+        top_k: int = 5,
+        similarity_threshold: float = 0.6,
         filter: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, List[RetrieveResultItem]]:
         """
@@ -77,7 +82,7 @@ class BaseRAGApp(metaclass=SingletonRegisterMeta):
             Dict[str, List[RetrieveResultItem]]: Dictionary with queries as keys and
             lists of RetrieveResultItem as values.
         """
-        return await self.app.hybrid_retrieve(unique_name, queries, reranker, similarity_threshold, filter)
+        return await self.app.hybrid_retrieve(unique_name, queries, reranker, top_k, similarity_threshold, filter)
 
     async def delete(self, unique_name: str, docs_to_delete: List[str]):
         """
@@ -88,8 +93,16 @@ class BaseRAGApp(metaclass=SingletonRegisterMeta):
         """
         await self.app.delete(unique_name, docs_to_delete)
 
-    async def QA(
-        self, unique_name: str, question: str, retrieve_top_k=5, lang="zh", prompt=None, llm: Optional[BaseChat] = None
+    async def chat(
+        self,
+        unique_name: str,
+        question: str,
+        histories: Optional[HistoryContext] = None,
+        retrieve_top_k=5,
+        similarity_threshold=0.6,
+        lang="zh",
+        prompt=None,
+        llm: Optional[BaseChat] = None,
     ) -> AsyncIterator[QAChatResponse]:
         """
         Perform question answering on the GraphRAG application.
@@ -104,5 +117,22 @@ class BaseRAGApp(metaclass=SingletonRegisterMeta):
             AsyncIterator[QAChatResponse]
 
         """
-        async for r in self.app.qa(unique_name, question, retrieve_top_k, prompt, llm):
-            yield r
+        try:
+            history_context = ""
+            if histories and histories.items:
+                history_context = "\n".join([f"{item.role}: {item.content}\n" for item in histories.items])
+
+            async for r in self.app.qa(
+                unique_name, question, history_context, retrieve_top_k, similarity_threshold, prompt, llm
+            ):
+                yield r
+        except Exception as e:
+            logger.error(f"Error in QA: {e}:{traceback.format_exc()}")
+            yield QAChatResponse(
+                question=question,
+                answer="",
+                error=str(e),
+                documents=[],
+                source_documents=[],
+                metadata={},
+            )
