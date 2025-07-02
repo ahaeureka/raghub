@@ -20,6 +20,9 @@ class RDFOperator(BaseOperator[RDFOperatorOutputModel]):
         if not content:
             output["triples"] = []
             return output
+        if isinstance(output["content"], list):
+            print(f"RDFOperator: content is a list, converting to triples:{output['content']}")
+            output["content"] = {"triples": output["content"]}
         output["triples"] = self._text_processing(self._filter_invalid_triples(output["content"]["triples"]))
         return output
 

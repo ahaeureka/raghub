@@ -1,6 +1,8 @@
+import asyncio
 from typing import AsyncIterator, List
 
 import grpc
+from google.protobuf import empty_pb2
 from loguru import logger
 from protobuf_pydantic_gen.any_type_transformer import AnyTransformer
 from raghub_app.app_schemas.history_context import HistoryContext, HistoryContextItem
@@ -51,16 +53,20 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
             queries=[request.query],
             reranker=self.app.default_reranker(),
             top_k=request.retrieval_setting.top_k or 5,
-            similarity_threshold=request.retrieval_setting.score_threshold or 0.6,
+            similarity_threshold=request.retrieval_setting.score_threshold or 0.2,
         )
         records: List[rag_pb2.RetrievalResponseRecord] = []
         items = rsp.get(request.query, [])
         for item in items:
+            metadata = {
+                key: AnyTransformer.any_type_to_protobuf(value) for key, value in item.document.metadata.items()
+            }
+
             record = rag_pb2.RetrievalResponseRecord(
                 content=item.document.content,
                 score=item.score,
                 title=item.document.metadata.get("title", ""),
-                metadata=item.document.metadata,
+                metadata=metadata,
             )
             records.append(record)
         response = rag_pb2.RetrievalResponse(
@@ -175,7 +181,9 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
             )
             doc.metadata["knowledge_id"] = request.knowledge_id
             docs.append(doc)
+        logger.debug(f"Adding {len(docs)} documents to knowledge_id: {request.knowledge_id}")
         new_docs: List[Document] = await self.app.add_documents(unique_name=request.knowledge_id, texts=docs)
+        logger.debug(f"Added {len(new_docs)} documents to knowledge_id: {request.knowledge_id}")
         # response = rag_pb2.AddDocumentsResponse()
         rsp_rag_docs: List[rag_pb2.RAGDocument] = []
         for doc in new_docs:
@@ -193,5 +201,14 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
             rsp_rag_docs.append(rag_doc)
         response = rag_pb2.AddDocumentsResponse(
             documents=rsp_rag_docs,
+        )
+        return response
+
+    async def Health(self, request: empty_pb2.Empty, context: grpc.ServicerContext) -> rag_pb2.HealthResponse:
+        """Health check method implementation."""
+        healthy = True
+        await asyncio.sleep(0.05)  # Simulate async operation
+        response = rag_pb2.HealthResponse(
+            healthy=healthy, message="RAG service is healthy" if healthy else "RAG service is not healthy"
         )
         return response

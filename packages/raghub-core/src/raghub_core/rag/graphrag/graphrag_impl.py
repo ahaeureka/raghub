@@ -516,8 +516,7 @@ class GraphRAGImpl(BaseRAG):
         # Collect successfully processed documents
         for i, document in enumerate(processed_documents):
             if isinstance(document, BaseException):
-                doc_uid = valid_documents[i].uid if i < len(valid_documents) else "unknown"
-                logger.error(f"Error in adding document {doc_uid}: {document}")
+                logger.error(f"Error in adding document {valid_documents[i].uid}: {document}")
                 continue
             logger.info(f"Document {document.uid} added successfully.")
             successful_documents.append(document)

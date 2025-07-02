@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   rag_model.py
-@Time    :   2025-07-01 15:53:24
+@Time    :   2025-07-02 16:57:06
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 
@@ -83,7 +83,7 @@ class RetrievalResponseRecord(BaseModel):
     content: str = _Field(description="Contains a chunk of text from a data source in the knowledge base.", default="")
     score: float = _Field(description="The score of relevance of the result to the query, scope: 0~1", default=0.0)
     title: str = _Field(description="Document title", default="")
-    metadata: Optional[Dict[str, str]] = _Field(
+    metadata: Optional[Dict[str, Any]] = _Field(
         description="Contains metadata attributes and their values for the document in the data source.", default=None
     )
 
@@ -299,5 +299,22 @@ class DeleteDocumentsResponse(BaseModel):
 
     @classmethod
     def from_protobuf(cls, src: _message.Message) -> "DeleteDocumentsResponse":
+        """Convert protobuf message to Pydantic model"""
+        return protobuf2model(cls, src)
+
+
+class HealthResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    healthy: bool = _Field(description="Indicates if the service is healthy", default=False)
+    message: Optional[str] = _Field(description="Health status message", default="")
+
+    def to_protobuf(self) -> _message.Message:
+        """Convert Pydantic model to protobuf message"""
+        _proto = pool.FindMessageTypeByName("raghub_interfaces.HealthResponse")
+        _cls: Type[_message.Message] = message_factory.GetMessageClass(_proto)
+        return model2protobuf(self, _cls())
+
+    @classmethod
+    def from_protobuf(cls, src: _message.Message) -> "HealthResponse":
         """Convert protobuf message to Pydantic model"""
         return protobuf2model(cls, src)

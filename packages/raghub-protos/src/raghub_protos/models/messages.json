@@ -48,7 +48,7 @@
             "required": true,
             "ext": {
                 "description": "\"The score limit of relevance of the result to the query, scope: 0~1\"",
-                "default": "0.7"
+                "default": "0.2"
             },
             "description": "\"The score limit of relevance of the result to the query, scope: 0~1\""
         }
@@ -492,7 +492,7 @@
             "description": "\"Document title\""
         },
         "metadata": {
-            "type": "Dict[str, str]",
+            "type": "Dict[str, Any]",
             "repeated": false,
             "required": false,
             "ext": {
@@ -812,6 +812,28 @@
                 "default": "\"\""
             },
             "description": "\"Request ID for tracking\""
+        }
+    },
+    "HealthResponse": {
+        "healthy": {
+            "type": "bool",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Indicates if the service is healthy\"",
+                "default": "False"
+            },
+            "description": "\"Indicates if the service is healthy\""
+        },
+        "message": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Health status message\"",
+                "default": "\"\""
+            },
+            "description": "\"Health status message\""
         }
     }
 }

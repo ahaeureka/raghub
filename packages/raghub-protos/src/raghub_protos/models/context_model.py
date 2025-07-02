@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   context_model.py
-@Time    :   2025-07-01 15:53:24
+@Time    :   2025-07-02 16:57:06
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 

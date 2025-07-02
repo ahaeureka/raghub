@@ -1,0 +1,817 @@
+{
+    "ChatMessage": {
+        "role": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Role of the message, e.g., 'user', 'assistant', 'system'\"",
+                "default": "\"\""
+            },
+            "description": "\"Role of the message, e.g., 'user', 'assistant', 'system'\""
+        },
+        "content": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Content of the message\"",
+                "default": "\"\""
+            },
+            "description": "\"Content of the message\""
+        },
+        "name": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Name of the message sender, if applicable\"",
+                "default": "\"\""
+            },
+            "description": "\"Name of the message sender, if applicable\""
+        }
+    },
+    "RetrievalSetting": {
+        "top_k": {
+            "type": "int",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Maximum number of retrieved results\"",
+                "default": "5"
+            },
+            "description": "\"Maximum number of retrieved results\""
+        },
+        "score_threshold": {
+            "type": "float",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"The score limit of relevance of the result to the query, scope: 0~1\"",
+                "default": "0.7"
+            },
+            "description": "\"The score limit of relevance of the result to the query, scope: 0~1\""
+        }
+    },
+    "CreateChatCompletionRequest": {
+        "model": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"The model to use for chat completion\"",
+                "default": "\"\""
+            },
+            "description": "\"The model to use for chat completion\""
+        },
+        "messages": {
+            "type": "ChatMessage",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"List of messages in the chat conversation\"",
+                "default": null
+            },
+            "description": "\"List of messages in the chat conversation\""
+        },
+        "max_tokens": {
+            "type": "int",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Maximum number of tokens to generate in the response\"",
+                "default": "1000"
+            },
+            "description": "\"Maximum number of tokens to generate in the response\""
+        },
+        "temperature": {
+            "type": "float",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Sampling temperature for response generation\"",
+                "default": "0.7"
+            },
+            "description": "\"Sampling temperature for response generation\""
+        },
+        "metadata": {
+            "type": "Dict[str, Any]",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Additional options for the chat completion request\"",
+                "default": null
+            },
+            "description": "\"Additional options for the chat completion request\""
+        },
+        "user": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Identifier for the user making the request\"",
+                "default": "\"\""
+            },
+            "description": "\"Identifier for the user making the request\""
+        },
+        "stream": {
+            "type": "bool",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Whether to stream the response back\"",
+                "default": "False"
+            },
+            "description": "\"Whether to stream the response back\""
+        },
+        "response_format": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Format of the response, e.g., 'json', 'text'\"",
+                "default": "\"json\""
+            },
+            "description": "\"Format of the response, e.g., 'json', 'text'\""
+        },
+        "knowledge_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Knowledge base ID to use for the chat completion\"",
+                "default": "\"\""
+            },
+            "description": "\"Knowledge base ID to use for the chat completion\""
+        },
+        "retrieval_setting": {
+            "type": "RetrievalSetting",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Knowledge base retrieval settings\"",
+                "default": "RetrievalSetting()"
+            },
+            "description": "\"Knowledge base retrieval settings\""
+        }
+    },
+    "ChatCompletionChoice": {
+        "index": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Index of the choice in the response\"",
+                "default": "\"\""
+            },
+            "description": "\"Index of the choice in the response\""
+        },
+        "message": {
+            "type": "ChatMessage",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"The message generated as part of the choice\"",
+                "default": null
+            },
+            "description": "\"The message generated as part of the choice\""
+        },
+        "finish_reason": {
+            "type": "float",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Reason for finishing the generation, e.g., 'stop', 'length'\"",
+                "default": "0.0"
+            },
+            "description": "\"Reason for finishing the generation, e.g., 'stop', 'length'\""
+        }
+    },
+    "ChatCompletionUsage": {
+        "prompt_tokens": {
+            "type": "int",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Number of tokens in the prompt\"",
+                "default": "0"
+            },
+            "description": "\"Number of tokens in the prompt\""
+        },
+        "completion_tokens": {
+            "type": "int",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Number of tokens in the completion\"",
+                "default": "0"
+            },
+            "description": "\"Number of tokens in the completion\""
+        },
+        "total_tokens": {
+            "type": "int",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Total number of tokens used in the request\"",
+                "default": "0"
+            },
+            "description": "\"Total number of tokens used in the request\""
+        }
+    },
+    "ChatCompletionReference": {
+        "knowledge_id": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Knowledge base ID used for the chat completion\"",
+                "default": "\"\""
+            },
+            "description": "\"Knowledge base ID used for the chat completion\""
+        },
+        "chunk_id": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"ID of the chunk used in the chat completion\"",
+                "default": "\"\""
+            },
+            "description": "\"ID of the chunk used in the chat completion\""
+        },
+        "content": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Content of the chunk used in the chat completion\"",
+                "default": "\"\""
+            },
+            "description": "\"Content of the chunk used in the chat completion\""
+        },
+        "type": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Type of the reference, e.g., 'text', 'image'\"",
+                "default": "\"text\""
+            },
+            "description": "\"Type of the reference, e.g., 'text', 'image'\""
+        },
+        "metadata": {
+            "type": "Dict[str, Any]",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Additional metadata about the reference\"",
+                "default": null
+            },
+            "description": "\"Additional metadata about the reference\""
+        },
+        "source": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Source of the reference, e.g., 'knowledge_base', 'external'\"",
+                "default": "\"knowledge_base\""
+            },
+            "description": "\"Source of the reference, e.g., 'knowledge_base', 'external'\""
+        }
+    },
+    "CreateChatCompletionResponse": {
+        "id": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Unique identifier for the chat completion request\"",
+                "default": "\"\""
+            },
+            "description": "\"Unique identifier for the chat completion request\""
+        },
+        "object": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Type of object returned, e.g., 'chat.completion'\"",
+                "default": "\"\""
+            },
+            "description": "\"Type of object returned, e.g., 'chat.completion'\""
+        },
+        "created": {
+            "type": "int",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Timestamp of when the chat completion was created\"",
+                "default": "0"
+            },
+            "description": "\"Timestamp of when the chat completion was created\""
+        },
+        "model": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Model used for generating the chat completion\"",
+                "default": "\"\""
+            },
+            "description": "\"Model used for generating the chat completion\""
+        },
+        "choices": {
+            "type": "ChatCompletionChoice",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"List of choices generated in the chat completion\"",
+                "default": null
+            },
+            "description": "\"List of choices generated in the chat completion\""
+        },
+        "metadata": {
+            "type": "Dict[str, Any]",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Additional metadata about the chat completion response\"",
+                "default": null
+            },
+            "description": "\"Additional metadata about the chat completion response\""
+        },
+        "usage": {
+            "type": "ChatCompletionUsage",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Usage statistics for the chat completion request\"",
+                "default": null
+            },
+            "description": "\"Usage statistics for the chat completion request\""
+        },
+        "references": {
+            "type": "ChatCompletionReference",
+            "repeated": true,
+            "required": false,
+            "ext": {
+                "description": "\"References to knowledge base chunks used in the chat completion\"",
+                "default": null
+            },
+            "description": "\"References to knowledge base chunks used in the chat completion\""
+        }
+    },
+    "RequestContextHeaders": {},
+    "MetadataConditionItem": {
+        "name": {
+            "type": "str",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"Names of the metadata to filter\"",
+                "default": "\"\""
+            },
+            "description": "\"Names of the metadata to filter\""
+        },
+        "comparison_operator": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Comparison operator\"",
+                "default": "\"\""
+            },
+            "description": "\"Comparison operator\""
+        },
+        "value": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Comparison value, can be omitted when the operator is empty, not empty, null, or not null\"",
+                "default": "\"\""
+            },
+            "description": "\"Comparison value, can be omitted when the operator is empty, not empty, null, or not null\""
+        }
+    },
+    "MetadataCondition": {
+        "logical_operator": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Logical operator, values can be and or or, default is and\"",
+                "default": "\"and\""
+            },
+            "description": "\"Logical operator, values can be and or or, default is and\""
+        },
+        "conditions": {
+            "type": "MetadataConditionItem",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"List of conditions\"",
+                "default": null
+            },
+            "description": "\"List of conditions\""
+        }
+    },
+    "RetrievalRequest": {
+        "knowledge_id": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"knowledge’s unique ID\"",
+                "default": "\"\""
+            },
+            "description": "\"knowledge’s unique ID\""
+        },
+        "query": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"User’s query\"",
+                "default": "\"\""
+            },
+            "description": "\"User’s query\""
+        },
+        "retrieval_setting": {
+            "type": "RetrievalSetting",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Knowledge’s retrieval parameters\"",
+                "default": "RetrievalSetting()"
+            },
+            "description": "\"Knowledge’s retrieval parameters\""
+        },
+        "metadata_condition": {
+            "type": "MetadataCondition",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Original array filtering\"",
+                "default": "None"
+            },
+            "description": "\"Original array filtering\""
+        }
+    },
+    "RetrievalResponseRecord": {
+        "content": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Contains a chunk of text from a data source in the knowledge base.\"",
+                "default": "\"\""
+            },
+            "description": "\"Contains a chunk of text from a data source in the knowledge base.\""
+        },
+        "score": {
+            "type": "float",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"The score of relevance of the result to the query, scope: 0~1\"",
+                "default": "0.0"
+            },
+            "description": "\"The score of relevance of the result to the query, scope: 0~1\""
+        },
+        "title": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Document title\"",
+                "default": "\"\""
+            },
+            "description": "\"Document title\""
+        },
+        "metadata": {
+            "type": "Dict[str, Any]",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Contains metadata attributes and their values for the document in the data source.\"",
+                "default": null
+            },
+            "description": "\"Contains metadata attributes and their values for the document in the data source.\""
+        }
+    },
+    "RetrievalResponseError": {
+        "error_code": {
+            "type": "int",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Error code\"",
+                "default": "1001"
+            },
+            "description": "\"Error code\""
+        },
+        "error_msg": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"The description of API exception\"",
+                "default": "\"\""
+            },
+            "description": "\"The description of API exception\""
+        }
+    },
+    "RetrievalResponse": {
+        "records": {
+            "type": "RetrievalResponseRecord",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"A list of records from querying the knowledge base.\"",
+                "default": null
+            },
+            "description": "\"A list of records from querying the knowledge base.\""
+        },
+        "error": {
+            "type": "RetrievalResponseError",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Error information\"",
+                "default": null
+            },
+            "description": "\"Error information\""
+        },
+        "request_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Request ID for tracking\"",
+                "default": "\"\""
+            },
+            "description": "\"Request ID for tracking\""
+        }
+    },
+    "CreateIndexRequest": {
+        "unique_name": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Name of the index\"",
+                "default": "\"\""
+            },
+            "description": "\"Name of the index\""
+        }
+    },
+    "CreateIndexResponse": {
+        "unique_name": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Name of the index\"",
+                "default": "\"\""
+            },
+            "description": "\"Name of the index\""
+        }
+    },
+    "ChatRequest": {
+        "knowledge_id": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"knowledge’s unique ID\"",
+                "default": "\"\""
+            },
+            "description": "\"knowledge’s unique ID\""
+        },
+        "question": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"User’s question\"",
+                "default": "\"\""
+            },
+            "description": "\"User’s question\""
+        },
+        "retrieval_setting": {
+            "type": "RetrievalSetting",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Knowledge’s retrieval parameters\"",
+                "default": "RetrievalSetting()"
+            },
+            "description": "\"Knowledge’s retrieval parameters\""
+        },
+        "metadata_condition": {
+            "type": "MetadataCondition",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Original array filtering\"",
+                "default": null
+            },
+            "description": "\"Original array filtering\""
+        }
+    },
+    "ChatResponse": {
+        "answer": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"The answer to the question based on the retrieved knowledge\"",
+                "default": "\"\""
+            },
+            "description": "\"The answer to the question based on the retrieved knowledge\""
+        },
+        "records": {
+            "type": "RetrievalResponseRecord",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"A list of records used to generate the answer\"",
+                "default": null
+            },
+            "description": "\"A list of records used to generate the answer\""
+        },
+        "error": {
+            "type": "RetrievalResponseError",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Error information\"",
+                "default": null
+            },
+            "description": "\"Error information\""
+        }
+    },
+    "RAGDocument": {
+        "content": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Content of the document\"",
+                "default": "\"\""
+            },
+            "description": "\"Content of the document\""
+        },
+        "title": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"Title of the document\"",
+                "default": "\"\""
+            },
+            "description": "\"Title of the document\""
+        },
+        "metadata": {
+            "type": "Dict[str, Any]",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Metadata attributes and their values for the document\"",
+                "default": null
+            },
+            "description": "\"Metadata attributes and their values for the document\""
+        },
+        "type": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Type of the document, e.g., 'text', 'image'\"",
+                "default": "\"text\""
+            },
+            "description": "\"Type of the document, e.g., 'text', 'image'\""
+        },
+        "source": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Source of the document, e.g., 'knowledge_base', 'external'\"",
+                "default": "\"knowledge_base\""
+            },
+            "description": "\"Source of the document, e.g., 'knowledge_base', 'external'\""
+        }
+    },
+    "AddDocumentsRequest": {
+        "knowledge_id": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"knowledge’s unique ID\"",
+                "default": "\"\""
+            },
+            "description": "\"knowledge’s unique ID\""
+        },
+        "documents": {
+            "type": "RAGDocument",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"List of documents to be added\"",
+                "default": null
+            },
+            "description": "\"List of documents to be added\""
+        }
+    },
+    "AddDocumentsResponse": {
+        "documents": {
+            "type": "RAGDocument",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"List of documents that were added\"",
+                "default": null
+            },
+            "description": "\"List of documents that were added\""
+        },
+        "error": {
+            "type": "RetrievalResponseError",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Error information\"",
+                "default": null
+            },
+            "description": "\"Error information\""
+        },
+        "request_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Request ID for tracking\"",
+                "default": "\"\""
+            },
+            "description": "\"Request ID for tracking\""
+        }
+    },
+    "DeleteDocumentsRequest": {
+        "knowledge_id": {
+            "type": "str",
+            "repeated": false,
+            "required": true,
+            "ext": {
+                "description": "\"knowledge’s unique ID\"",
+                "default": "\"\""
+            },
+            "description": "\"knowledge’s unique ID\""
+        },
+        "document_ids": {
+            "type": "str",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"List of document IDs to be deleted\"",
+                "default": "\"\""
+            },
+            "description": "\"List of document IDs to be deleted\""
+        }
+    },
+    "DeleteDocumentsResponse": {
+        "deleted_ids": {
+            "type": "str",
+            "repeated": true,
+            "required": true,
+            "ext": {
+                "description": "\"List of document IDs that were successfully deleted\"",
+                "default": "\"\""
+            },
+            "description": "\"List of document IDs that were successfully deleted\""
+        },
+        "error": {
+            "type": "RetrievalResponseError",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Error information\"",
+                "default": null
+            },
+            "description": "\"Error information\""
+        },
+        "request_id": {
+            "type": "str",
+            "repeated": false,
+            "required": false,
+            "ext": {
+                "description": "\"Request ID for tracking\"",
+                "default": "\"\""
+            },
+            "description": "\"Request ID for tracking\""
+        }
+    }
+}

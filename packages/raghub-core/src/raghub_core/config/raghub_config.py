@@ -67,7 +67,7 @@ class EmbbedingModelConfig(ProxyLLMConfig):
         tags=["batch_size"],
     )
     n_dims: Optional[int] = BaseParameters.field(
-        default=None,
+        default=1024,
         description="Number of dimensions for the embedding",
         tags=["n_dims"],
     )

@@ -214,7 +214,7 @@ class HippoRAGImpl(BaseRAG):
 
             # Add document to embedding store
             docs = await self._embedd_store.add_documents(index_name, [doc])
-
+            logger.debug(f"Added document {doc.uid} to embedding store.")
             if not entities_str:
                 logger.warning(f"No entities extracted from document: {doc.content[:100]}...")
                 return doc
@@ -245,7 +245,7 @@ class HippoRAGImpl(BaseRAG):
                 )
                 for entity in entities_str
             ]
-
+            logger.info(f"Creating {len(entities_nodes)} entity nodes for document {doc.uid}.")
             await self._add_new_nodes(index_name, entities_nodes, docs)
 
             # Build graph edges
@@ -270,7 +270,7 @@ class HippoRAGImpl(BaseRAG):
             return doc
 
         except Exception as e:
-            logger.error(f"Failed to add document {doc.uid}: {e}")
+            logger.error(f"Failed to add document {doc.uid}: {e}:{traceback.format_exc()}")
             raise RuntimeError(f"Document addition failed for {doc.uid}: {e}") from e
 
     async def _update_database_caches(
@@ -691,26 +691,26 @@ class HippoRAGImpl(BaseRAG):
                 - The filtered phrase weights for the top-k phrases.
                 - The linking scores for the top-k phrases.
         """
-        # Step 1: 选择 top-k 短语
+        # Step 1: Select top-k phrases based on linking scores
         linking_score_map = dict(sorted(linking_score_map.items(), key=lambda x: x[1], reverse=True)[:link_top_k])
 
-        # Step 2: 生成 top-k 短语的 ID（如 "entity-<md5>"）
+        # Step 2: Generate top-k phrase IDs (e.g., "entity-<md5>")
         top_k_phrases = set(linking_score_map.keys())
         top_k_phrase_ids = set(
             [compute_mdhash_id(index_name, content=phrase, prefix=self._entity_prefix) for phrase in top_k_phrases]
         )
 
-        # Step 3: 查询图中实际存在的短语 ID
+        # Step 3: Query phrase IDs that actually exist in the graph
         top_k_nodes = self._graph_vertices_to_nodes(
             await self._graph_store.aselect_vertices(index_name, dict(name_in=list(top_k_phrase_ids)))
         )
         top_k_phrase_ids_in_graph = [node["name"] for node in top_k_nodes]
 
-        # Step 4: 清除未选中短语的权重
+        # Step 4: Clear weights for unselected phrases
         for phrase_id in all_phrase_weights:
             if phrase_id not in top_k_phrase_ids_in_graph:
                 all_phrase_weights[phrase_id] = np.float64(0.0)
-        # Step 5: 验证过滤后非零权重数量是否等于 link_top_k
+        # Step 5: Validate that the number of non-zero filtered weights equals link_top_k
         logger.debug(f"Filtered phrase weights: {all_phrase_weights}")
         logger.debug(f"Linking score map: {linking_score_map}")
         assert sum(1 for w in all_phrase_weights.values() if w != 0.0) == len(linking_score_map), (
@@ -755,6 +755,9 @@ class HippoRAGImpl(BaseRAG):
                 )
                 top_k_docs.extend([RetrieveResultItem(document=d, score=s, query=query) for d, s in sorted_doc_scores])
             else:
+                logger.debug(
+                    f"Found {len(top_k_facts)}:{[doc.content for doc, _ in top_k_facts]} top facts for query: {query}"
+                )
                 sorted_doc_key_scores = await self.graph_search_with_fact_entities(
                     index_name=index_name,
                     query=query,
@@ -766,6 +769,7 @@ class HippoRAGImpl(BaseRAG):
                 )
                 docs_ids = list(sorted_doc_key_scores.keys())
                 docs = await self._embedd_store.get_by_ids(index_name, docs_ids)
+                logger.debug(f"Retrieved {len(docs)} documents for query: {query}:{docs_ids}")
                 top_k_docs.extend(
                     [
                         RetrieveResultItem(document=doc, score=sorted_doc_key_scores[doc.uid], query=query, metadata={})
@@ -879,10 +883,8 @@ class HippoRAGImpl(BaseRAG):
             label=index_name,
             vertices_with_weight=node_weights,
             damping=damping,
-            top_k=top_k * 2,  # Ensure top_k is passed correctly here
         )
         # filter doc- prefix
-        logger.debug(f"Pagerank scores: {pagerank_scores}")
         filtered_dict = {k: v for k, v in pagerank_scores.items() if k.startswith(self._doc_prefix)}
         return filtered_dict
 
@@ -936,7 +938,7 @@ class HippoRAGImpl(BaseRAG):
 
         for triples in chunk_triples:
             for t in triples:
-                t_tuple = tuple(t)  # 确保三元组为元组类型
+                t_tuple = tuple(t)  # Ensure the triple is in tuple format
                 if t_tuple not in seen:
                     seen.add(t_tuple)
                     graph_triples.append(t_tuple)
@@ -1019,18 +1021,11 @@ class HippoRAGImpl(BaseRAG):
 
             logger.debug(f"Adding {len(docs)} new embeddings to the store")
 
-            # Batch process embeddings in chunks to manage memory
-            batch_size = self._embedding_batch_size
+            # Add documents to store (thread safety is handled at the storage level)
             processed_docs = []
-
-            for i in range(0, len(docs), batch_size):
-                batch_docs = docs[i : i + batch_size]
-                await self._embedd_store.add_documents(index_name, batch_docs)
-                processed_docs.extend(batch_docs)
-
-                # Small delay between batches for resource management
-                if i + batch_size < len(docs):
-                    await asyncio.sleep(0.05)
+            if docs:
+                await self._embedd_store.add_documents(index_name, docs)
+                processed_docs.extend(docs)
 
             # Retrieve all documents (new + existing) with their embeddings
             new_docs = await self._embedd_store.get_by_ids(index_name, missing_ids)
@@ -1124,6 +1119,7 @@ class HippoRAGImpl(BaseRAG):
                 for chunk_ent in chunk_ents:
                     node_key = compute_mdhash_id(index_name, chunk_ent, prefix=self._entity_prefix)
                     node_to_node_stats[(doc.uid, node_key)] = 1.0
+                    logger.debug(f"Adding edge from {doc.uid} to {node_key}")
             num_new_chunks += 1
         return num_new_chunks
 
@@ -1156,7 +1152,7 @@ class HippoRAGImpl(BaseRAG):
             key_batch_size=self.synonymy_edge_key_batch_size,
         )
         entity_id_to_row = {
-            doc.uid: {"content": doc.content}  # 假设Document类有id和text属性
+            doc.uid: {"content": doc.content}  # Assuming Document class has id and text attributes
             for doc in itertools.chain(query_docs, target_docs)
         }
         num_synonym_triple = 0
@@ -1359,7 +1355,7 @@ class HippoRAGImpl(BaseRAG):
         query: str,
         history_context: Optional[str] = "",
         top_k: int = 5,
-        similarity_threshold=0.7,
+        similarity_threshold=0.2,
         prompt: Optional[str] = None,
         llm: Optional[BaseChat] = None,
         reranker: Optional[BaseRerank] = None,
@@ -1532,43 +1528,3 @@ class HippoRAGImpl(BaseRAG):
         except Exception as e:
             logger.error(f"Critical error in batch entity processing: {e}")
             raise RuntimeError(f"Batch entity processing failed: {e}") from e
-
-    # def _optimize_memory_usage(self, data_structures: Dict[str, Any]) -> Dict[str, Any]:
-    #     """
-    #     Optimize memory usage of large data structures.
-
-    #     This method applies various optimization techniques to reduce memory footprint:
-    #     - Converting lists to more memory-efficient structures where appropriate
-    #     - Deduplicating data
-    #     - Compressing sparse data structures
-
-    #     Args:
-    #         data_structures: Dictionary of data structures to optimize.
-
-    #     Returns:
-    #         Dict[str, Any]: Optimized data structures.
-    #     """
-    #     optimized = {}
-
-    #     for key, data in data_structures.items():
-    #         try:
-    #             if isinstance(data, list):
-    #                 # Deduplicate lists while preserving order
-    #                 if data and all(isinstance(item, (str, int, float)) for item in data):
-    #                     seen = set()
-    #                     optimized[key] = [x for x in data if x not in seen and not seen.add(x)]
-    #                 else:
-    #                     optimized[key] = data
-
-    #             elif isinstance(data, dict):
-    #                 # Remove empty values from dictionaries
-    #                 optimized[key] = {k: v for k, v in data.items() if v is not None and v != ""}
-
-    #             else:
-    #                 optimized[key] = data
-
-    #         except Exception as e:
-    #             logger.warning(f"Failed to optimize data structure '{key}': {e}")
-    #             optimized[key] = data
-
-    #     return optimized

@@ -10,10 +10,10 @@ else
 	VENV_BIN=$(VENV)/bin
 endif
 
-# Get modified/added Python files from git (excluding *pb2.py files)
-GIT_MODIFIED_FILES = $(shell git diff --name-only --diff-filter=d --relative packages | grep '\.py$$' | grep -v 'pb2\.py$$' | grep -v 'pb2\.pyi$$' | grep -v 'pb2_grpc\.py$$' | grep -v -E '(^|/)tests?/')
-GIT_STAGED_FILES = $(shell git diff --cached --name-only --diff-filter=d --relative packages | grep '\.py$$' | grep -v 'pb2\.py$$' | grep -v 'pb2\.pyi$$' | grep -v 'pb2_grpc\.py$$' | grep -v -E '(^|/)tests?/')
-GIT_UNTRACKED_FILES = $(shell git ls-files --others --exclude-standard | grep '\.py$$' | grep -v 'pb2\.py$$' | grep -v 'pb2\.pyi$$' | grep -v 'pb2_grpc\.py$$' | grep -v -E '(^|/)tests?/')
+# Get modified/added Python files from git (excluding *pb2.py files and tests_ directories)
+GIT_MODIFIED_FILES = $(shell git diff --name-only --diff-filter=d --relative packages | grep '\.py$$' | grep -v 'pb2\.py$$' | grep -v 'pb2\.pyi$$' | grep -v 'pb2_grpc\.py$$' | grep -v -E '(^|/)tests_[^/]*/')
+GIT_STAGED_FILES = $(shell git diff --cached --name-only --diff-filter=d --relative packages | grep '\.py$$' | grep -v 'pb2\.py$$' | grep -v 'pb2\.pyi$$' | grep -v 'pb2_grpc\.py$$' | grep -v -E '(^|/)tests_[^/]*/')
+GIT_UNTRACKED_FILES = $(shell git ls-files --others --exclude-standard | grep '\.py$$' | grep -v 'pb2\.py$$' | grep -v 'pb2\.pyi$$' | grep -v 'pb2_grpc\.py$$' | grep -v -E '(^|/)tests_[^/]*/')
 GIT_FILES = $(sort $(GIT_MODIFIED_FILES) $(GIT_STAGED_FILES) $(GIT_UNTRACKED_FILES))
 setup: $(VENV)/bin/activate
 

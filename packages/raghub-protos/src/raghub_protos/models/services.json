@@ -82,6 +82,21 @@
                 "method": "DELETE",
                 "path": "/v1/rag/documents"
             }
+        },
+        "Health": {
+            "input_type": ".google.protobuf.Empty",
+            "output_type": ".raghub_interfaces.HealthResponse",
+            "streaming_type": "unary",
+            "method_full_name": "/raghub_interfaces.RAGService/Health",
+            "options": {
+                "[google.api.http]": {
+                    "get": "/health"
+                }
+            },
+            "http": {
+                "method": "GET",
+                "path": "/health"
+            }
         }
     }
 }

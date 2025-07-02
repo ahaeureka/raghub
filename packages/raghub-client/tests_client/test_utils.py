@@ -166,8 +166,8 @@ def save_test_results(results: Dict[str, Any], filename: str = "test_results.jso
         logger.error(f"保存测试结果失败: {e}")
 
 
-class TestTimer:
-    """测试计时器"""
+class TimerHelper:
+    """测试计时器工具类"""
 
     def __init__(self, name: str):
         self.name = name

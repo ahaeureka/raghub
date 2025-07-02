@@ -18,6 +18,7 @@ temperature = 0.3
 model = "${env:EMBEDDING_MODEL_NAME:-text-embedding-v3}"
 provider = "${env:EMBEDDING_PROVIDER:-openai-proxy-embedding}"
 batch_size = 5
+n_dims=1024
 embedding_key_prefix = "embedding"
 base_url = "${env:OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
 api_key = "${env:OPENAI_API_KEY}"
@@ -26,9 +27,9 @@ api_key = "${env:OPENAI_API_KEY}"
 lang = "en"
 
 [vector_storage]
-provider = "chromadb"
+provider = "qdrant"
 collection_name = "default_collection"
-persist_directory = "/app/output/tests/.raghub/cache/chroma_db"
+persist_directory = "/app/output/.deeprag/cache/qdrant_db"
 
 [graph]
 provider = "igraph"

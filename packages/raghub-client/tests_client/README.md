@@ -1,6 +1,36 @@
-# RAGHub Client 测试套件
+# RAGHub Client Test Suite
 
-这是 RAGHub 客户端的完整测试套件，用于测试 RAG 服务的各种功能。
+This is the complete test suite for the RAGHub client, designed to test various RAG service functionalities with automatic server management.
+
+## Automatic Server Management
+
+**NEW FEATURE**: The test suite now includes automatic RAGHub server management:
+
+- 🚀 **Auto-start**: Server automatically starts before tests run
+- 🛑 **Auto-stop**: Server stops after all tests complete  
+- 🔍 **Health check**: Verifies server is healthy before proceeding
+- ⚙️ **Configurable**: Can be disabled via environment variables
+
+### Quick Start
+
+```bash
+# Run tests with automatic server management (default)
+cd /app
+python -m pytest packages/raghub-client/tests/ -v
+
+# Disable auto-start if you prefer manual server management
+export RAGHUB_AUTO_START_SERVER=false
+raghub start server -c configs/test.toml  # Start manually
+python -m pytest packages/raghub-client/tests/ -v
+```
+
+### Configuration
+
+Set these environment variables to customize behavior:
+
+- `RAGHUB_AUTO_START_SERVER=true` - Auto-start server (default)
+- `RAGHUB_SERVER_CONFIG=configs/test.toml` - Server config file
+- `RAGHUB_SERVER_STARTUP_TIMEOUT=60` - Startup timeout seconds
 
 ## 测试结构
 

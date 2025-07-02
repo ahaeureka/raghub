@@ -54,7 +54,6 @@ class GraphStorage(metaclass=SingletonRegisterMeta):
         label: str,
         vertices_with_weight: Dict[str, float],
         damping: float = 0.85,
-        top_k: int = 10,
         **kwargs: Any,
     ) -> Dict[str, float]:
         raise NotImplementedError("Subclasses should implement this method.")

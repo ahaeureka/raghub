@@ -130,7 +130,6 @@ class RAGHubClient:
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(url, json=request.model_dump(exclude_none=True), headers=request_headers)
-
             if response.status_code >= 400:
                 raise httpx.HTTPStatusError(f"HTTP {response.status_code}", request=response.request, response=response)
 

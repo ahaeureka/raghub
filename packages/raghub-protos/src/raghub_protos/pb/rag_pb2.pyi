@@ -1,5 +1,6 @@
 from google.api import annotations_pb2 as _annotations_pb2
 from google.protobuf import any_pb2 as _any_pb2
+from google.protobuf import empty_pb2 as _empty_pb2
 from protobuf_pydantic_gen import pydantic_pb2 as _pydantic_pb2
 import chat_pb2 as _chat_pb2
 from google.protobuf.internal import containers as _containers
@@ -46,8 +47,8 @@ class RetrievalResponseRecord(_message.Message):
         KEY_FIELD_NUMBER: _ClassVar[int]
         VALUE_FIELD_NUMBER: _ClassVar[int]
         key: str
-        value: str
-        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+        value: _any_pb2.Any
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[_any_pb2.Any, _Mapping]] = ...) -> None: ...
     CONTENT_FIELD_NUMBER: _ClassVar[int]
     SCORE_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
@@ -55,8 +56,8 @@ class RetrievalResponseRecord(_message.Message):
     content: str
     score: float
     title: str
-    metadata: _containers.ScalarMap[str, str]
-    def __init__(self, content: _Optional[str] = ..., score: _Optional[float] = ..., title: _Optional[str] = ..., metadata: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    metadata: _containers.MessageMap[str, _any_pb2.Any]
+    def __init__(self, content: _Optional[str] = ..., score: _Optional[float] = ..., title: _Optional[str] = ..., metadata: _Optional[_Mapping[str, _any_pb2.Any]] = ...) -> None: ...
 
 class RetrievalResponseError(_message.Message):
     __slots__ = ("error_code", "error_msg")
@@ -166,3 +167,11 @@ class DeleteDocumentsResponse(_message.Message):
     error: RetrievalResponseError
     request_id: str
     def __init__(self, deleted_ids: _Optional[_Iterable[str]] = ..., error: _Optional[_Union[RetrievalResponseError, _Mapping]] = ..., request_id: _Optional[str] = ...) -> None: ...
+
+class HealthResponse(_message.Message):
+    __slots__ = ("healthy", "message")
+    HEALTHY_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    healthy: bool
+    message: str
+    def __init__(self, healthy: bool = ..., message: _Optional[str] = ...) -> None: ...

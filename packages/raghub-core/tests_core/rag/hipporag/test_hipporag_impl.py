@@ -70,7 +70,7 @@ class MockRerank(BaseRerank):
         """模拟重排序，支持不同的参数格式"""
         if len(args) >= 2:
             # 处理 (query, documents) 格式
-            query, documents = args[0], args[1]
+            _, documents = args[0], args[1]
             if isinstance(documents, list):
                 return documents  # 直接返回文档，不重排序
 

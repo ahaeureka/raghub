@@ -4,13 +4,13 @@ RAGHub Client 检索服务测试
 """
 
 import logging
-
-import pytest
-from raghub_protos.models.rag_model import MetadataCondition, MetadataConditionItem
+import os
 
 # 使用绝对导入避免模块路径冲突
 import sys
-import os
+
+import pytest
+from raghub_protos.models.rag_model import MetadataCondition, MetadataConditionItem
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from base_test import BaseRAGTest

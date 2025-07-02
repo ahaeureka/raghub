@@ -1,24 +1,28 @@
 """
 RAGHub Workspace Level Pytest Configuration
 
-提供workspace级别的pytest配置和通用fixtures
+Provides workspace-level pytest configuration and common fixtures
 """
+
+__package_name__ = "raghub_workspace"
+__conftest_identifier__ = "raghub_workspace_conftest_20250702"
 
 import asyncio
 import logging
+
 import pytest
 
-# 配置 pytest-asyncio (必须在顶级conftest中定义)
-pytest_plugins = ("pytest_asyncio",)
+# Configure pytest-asyncio (must be defined in top-level conftest)
+# pytest_plugins = ("pytest_asyncio",)
 
-# 设置全局日志配置
+# Set global logging configuration
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(), logging.FileHandler("test_output.log", mode="w", encoding="utf-8")],
 )
 
-# 设置各个模块的日志级别
+# Set log levels for various modules
 logging.getLogger("raghub_client").setLevel(logging.INFO)
 logging.getLogger("raghub_core").setLevel(logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -26,13 +30,13 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 @pytest.fixture(scope="session")
 def event_loop_policy():
-    """设置事件循环策略"""
+    """Set event loop policy"""
     return asyncio.get_event_loop_policy()
 
 
 @pytest.fixture(scope="session")
 def event_loop(event_loop_policy):
-    """创建 session 级别的事件循环"""
+    """Create session-level event loop"""
     loop = event_loop_policy.new_event_loop()
     yield loop
     loop.close()
@@ -40,30 +44,33 @@ def event_loop(event_loop_policy):
 
 # Workspace level configuration
 def pytest_configure(config):
-    """Workspace级别的pytest配置"""
-    # 添加workspace级别的标记
-    config.addinivalue_line("markers", "workspace: 标记workspace级别的测试")
-    config.addinivalue_line("markers", "slow: 标记耗时较长的测试")
-    config.addinivalue_line("markers", "integration: 标记集成测试")
-    config.addinivalue_line("markers", "unit: 标记单元测试")
+    """Workspace-level pytest configuration"""
+    # Add workspace-level markers
+    config.addinivalue_line("markers", "workspace: marks workspace-level tests")
+    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line("markers", "unit: marks tests as unit tests")
+    config.addinivalue_line("markers", "client: marks tests as client-specific tests")
+    config.addinivalue_line("markers", "core: marks tests as core-specific tests")
 
 
 def pytest_collection_modifyitems(config, items):
-    """修改测试收集行为"""
-    # 为没有标记的测试添加默认标记
+    """Modify test collection behavior"""
+    # Add default marker for tests without specific markers
+    valid_markers = ["slow", "integration", "unit", "client", "core", "workspace"]
     for item in items:
-        if not any(mark.name in ["slow", "integration", "unit"] for mark in item.iter_markers()):
+        if not any(mark.name in valid_markers for mark in item.iter_markers()):
             item.add_marker(pytest.mark.unit)
 
 
 @pytest.fixture(autouse=True)
 def test_info(request):
-    """自动显示测试信息"""
+    """Automatically display test information"""
     test_name = request.node.name
     test_file = request.node.parent.name
     logger = logging.getLogger(__name__)
-    logger.info(f"🧪 开始测试: {test_file}::{test_name}")
+    logger.info(f"🧪 Starting test: {test_file}::{test_name}")
 
     yield
 
-    logger.info(f"✅ 测试完成: {test_file}::{test_name}")
+    logger.info(f"✅ Test completed: {test_file}::{test_name}")

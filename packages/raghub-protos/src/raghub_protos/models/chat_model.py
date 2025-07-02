@@ -2,7 +2,7 @@
 # -*- encoding: utf-8 -*-
 """
 @File    :   chat_model.py
-@Time    :   2025-07-01 15:53:24
+@Time    :   2025-07-02 16:57:06
 @Desc    :   Generated Pydantic models from protobuf definitions
 """
 
@@ -37,7 +37,7 @@ class RetrievalSetting(BaseModel):
     model_config = ConfigDict(protected_namespaces=())
     top_k: int = _Field(description="Maximum number of retrieved results", default=5)
     score_threshold: float = _Field(
-        description="The score limit of relevance of the result to the query, scope: 0~1", default=0.7
+        description="The score limit of relevance of the result to the query, scope: 0~1", default=0.2
     )
 
     def to_protobuf(self) -> _message.Message:

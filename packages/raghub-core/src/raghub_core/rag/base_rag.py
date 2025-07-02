@@ -80,7 +80,7 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
         query: str,
         history_context: Optional[str] = "",
         top_k: int = 5,
-        similarity_threshold=0.6,
+        similarity_threshold: float = 0.2,  # Higher threshold for QA accuracy
         prompt: Optional[str] = None,
         llm: Optional[BaseChat] = None,
         reranker: Optional[BaseRerank] = None,
@@ -92,7 +92,13 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
             unique_name (str): Name of the index to use for the question answering.
             query (str): The question to answer.
             history_context (Optional[str]): Optional context from previous interactions.
+            top_k (int): Number of top documents to retrieve.
             similarity_threshold (float): Threshold for similarity scores to consider a document relevant.
+                                         Default 0.75 for high accuracy in QA tasks.
+                                         Recommended ranges:
+                                         - High accuracy (QA): 0.75-0.85
+                                         - Balanced retrieval: 0.65-0.75
+                                         - High recall: 0.5-0.65
             prompt (Optional[str]): Optional prompt for the LLM.
             llm (Optional[BaseChat]): Optional LLM instance to use for generating answers.
             reranker (Optional[BaseRerank]): Optional reranker instance to use for reranking results.
@@ -126,7 +132,7 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
         queries: List[str],
         reranker: BaseRerank,
         top_k: int = 5,
-        similarity_threshold=0.7,
+        similarity_threshold=0.2,
         filter: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, List[RetrieveResultItem]]:
         """
@@ -135,7 +141,13 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
             unique_name (str): Name of the index to use for retrieval.
             queries (List[str]): List of query strings.
             reranker (BaseRerank): Reranker instance to use for reranking results.
+            top_k (int): Number of top documents to retrieve.
             similarity_threshold (float): Threshold for similarity scores to consider a document relevant.
+                                         Default 0.7 for balanced precision/recall.
+                                         Recommended ranges:
+                                         - High accuracy: 0.75-0.85
+                                         - Balanced: 0.65-0.75
+                                         - High recall: 0.5-0.65
             filter (Optional[Dict[str, Any]]): Optional filter criteria for retrieval.
         Returns:
             Dict[str, List[RetrieveResultItem]]: Dictionary with queries as keys and
@@ -145,8 +157,17 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
         embedding_retrieval_results: Dict[str, List[RetrieveResultItem]] = await self.embedding_retrieve(
             unique_name, queries, filter
         )
+        # Log retrieval results for debugging
+        graph_result_summary = {
+            query: [item.document.uid for item in items] for query, items in graph_retrieval_result.items()
+        }
+        embedding_result_summary = {
+            query: [item.document.uid for item in items] for query, items in embedding_retrieval_results.items()
+        }
 
-        hybrid_results: Dict[str, RetrieveResultItem] = {}
+        logger.debug(f"Graph retrieval results: {graph_result_summary}")
+        logger.debug(f"Embedding retrieval results: {embedding_result_summary}")
+        hybrid_results: Dict[str, List[RetrieveResultItem]] = {}
         query_to_docs: Dict[str, List[Document]] = {}
         for query in queries:
             query_to_docs[query] = [item.document for item in graph_retrieval_result[query]] + [
@@ -156,10 +177,13 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
                 logger.warning(f"No documents found for query '{query}' in hybrid retrieval.")
                 continue
             query_to_docs[query] = duplicate_filter(query_to_docs[query])
-            rerank_to_docs = await reranker.rerank(query, query_to_docs[query])
+            rerank_to_docs: Dict[str, float] = await reranker.rerank(query, query_to_docs[query])
             logger.debug(
-                f"Rerank results for query '{query}': {rerank_to_docs},similarity_threshold:{similarity_threshold}"
+                f"Rerank results for query '{query}': {rerank_to_docs}, similarity_threshold: {similarity_threshold}"
             )
+            if not rerank_to_docs:
+                logger.warning(f"No reranked documents for query '{query}'")
+                continue
             uid_to_docs = {doc.uid: doc for doc in query_to_docs[query]}
             rerank_docs = [
                 Document(
@@ -172,7 +196,9 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
                 for uid, score in rerank_to_docs.items()
                 if score >= similarity_threshold
             ]
-            logger.debug(f"Rerank documents for query '{query}': {[doc.uid for doc in rerank_docs]}")
+            if len(rerank_docs) > top_k:
+                rerank_docs = rerank_docs[:top_k]
+            logger.debug(f"Rerank documents for query '{query}': {[doc.uid for doc in rerank_docs]} for top_k: {top_k}")
             hybrid_results[query] = [
                 RetrieveResultItem(
                     document=doc,

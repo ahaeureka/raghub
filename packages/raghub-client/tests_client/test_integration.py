@@ -4,12 +4,12 @@ RAGHub Client 集成测试
 """
 
 import logging
-
-import pytest
+import os
 
 # 使用绝对导入避免模块路径冲突
 import sys
-import os
+
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from base_test import BaseRAGTest

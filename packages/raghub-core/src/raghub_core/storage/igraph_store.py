@@ -238,7 +238,6 @@ class IGraphStore(GraphStorage):
         label: str,
         vertices_with_weight: Dict[str, float],
         damping: float = 0.85,
-        top_k: int = 10,
         **kwargs: Any,
     ) -> Dict[str, float]:
         """Compute the personalized PageRank of the graph."""
@@ -272,19 +271,17 @@ class IGraphStore(GraphStorage):
         )
         labeled_pairs = [(self._graph[label].vs[i]["name"], pr_scores[i]) for i in range(len(pr_scores))]
         sorted_pairs = sorted(labeled_pairs, key=lambda x: x[1], reverse=True)
-        return dict(sorted_pairs[:top_k])
+
+        return dict(sorted_pairs)
 
     async def apersonalized_pagerank(
         self,
         label: str,
         vertices_with_weight: Dict[str, float],
         damping: float = 0.85,
-        top_k: int = 10,
         **kwargs: Any,
     ) -> Dict[str, float]:
-        return await run_in_executor(
-            None, self.personalized_pagerank, label, vertices_with_weight, damping, top_k, **kwargs
-        )
+        return await run_in_executor(None, self.personalized_pagerank, label, vertices_with_weight, damping, **kwargs)
 
     def get_by_ids(self, label: str, ids: List[str]) -> List[Document]:
         """Get vertices by their IDs."""

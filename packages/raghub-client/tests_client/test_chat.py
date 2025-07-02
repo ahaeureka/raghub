@@ -4,14 +4,14 @@ RAGHub Client 聊天服务测试
 """
 
 import logging
+import os
+
+# 使用绝对导入避免模块路径冲突
+import sys
 from typing import List
 
 import pytest
 from raghub_protos.models.chat_model import CreateChatCompletionResponse
-
-# 使用绝对导入避免模块路径冲突
-import sys
-import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from base_test import BaseRAGTest

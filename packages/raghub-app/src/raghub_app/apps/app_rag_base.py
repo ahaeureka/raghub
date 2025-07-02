@@ -44,6 +44,7 @@ class BaseRAGApp(metaclass=SingletonRegisterMeta):
         Returns:
             List of Document objects that were added.
         """
+        print(f"Adding {len(texts)} documents to index: {unique_name}")
         return await self.app.add_documents(unique_name, texts)
 
     @abstractmethod
@@ -76,7 +77,7 @@ class BaseRAGApp(metaclass=SingletonRegisterMeta):
         queries: List[str],
         reranker: Optional[BaseRerank] = None,
         top_k: int = 5,
-        similarity_threshold: float = 0.6,
+        similarity_threshold: float = 0.2,
         filter: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, List[RetrieveResultItem]]:
         """

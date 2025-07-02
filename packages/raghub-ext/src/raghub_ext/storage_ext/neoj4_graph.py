@@ -225,12 +225,7 @@ class Neo4jGraphStorage(GraphStorage):
         await self.aadd_vertices(label, nodes)
 
     async def apersonalized_pagerank(
-        self,
-        label: str,
-        vertices_with_weight: Dict[str, float],
-        damping: float = 0.85,
-        top_k: int = 10,
-        **kwargs: Any,
+        self, label: str, vertices_with_weight: Dict[str, float], damping: float = 0.85, **kwargs: Any
     ) -> Dict[str, float]:
         """Calculate personalized PageRank scores for top-k vertices."""
         if not self._driver:
@@ -270,14 +265,12 @@ class Neo4jGraphStorage(GraphStorage):
                 YIELD nodeId, score
                 RETURN gds.util.asNode(nodeId).uid AS name, score
                 ORDER BY score DESC, name ASC
-                LIMIT $topK
                 """
                 logger.debug(f"Running personalized PageRank vertices_with_weight: {vertices_with_weight}")
                 result = await session.run(
                     query,
                     pairs=[{"name": name, "weight": value} for name, value in vertices_with_weight.items()],
                     damping=damping,
-                    topK=top_k,
                     graphName=graph_name,
                 )
                 return {record["name"]: record["score"] async for record in result}

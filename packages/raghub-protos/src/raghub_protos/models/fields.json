@@ -120,5 +120,9 @@
         "deleted_ids": "\"List of document IDs that were successfully deleted\"",
         "error": "\"Error information\"",
         "request_id": "\"Request ID for tracking\""
+    },
+    "HealthResponse": {
+        "healthy": "\"Indicates if the service is healthy\"",
+        "message": "\"Health status message\""
     }
 }

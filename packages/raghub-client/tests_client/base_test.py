@@ -4,6 +4,10 @@ RAGHub Client 基础测试类
 """
 
 import logging
+import os
+
+# 使用绝对导入避免模块路径冲突
+import sys
 import uuid
 from typing import List
 
@@ -21,10 +25,6 @@ from raghub_protos.models.rag_model import (
     RAGDocument,
     RetrievalRequest,
 )
-
-# 使用绝对导入避免模块路径冲突
-import sys
-import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from config import TestConfig
