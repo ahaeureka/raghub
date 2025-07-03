@@ -1,6 +1,6 @@
 app_name = "RAGHub"
 app_version = "0.1.0"
-app_description = "RAGHub Application"
+app_description = "RAGHub Application - HippoRAG Mode"
 
 [logger]
 log_level = "DEBUG"
@@ -28,16 +28,16 @@ lang = "en"
 
 [vector_storage]
 provider = "qdrant"
-collection_name = "default_collection"
-persist_directory = "/app/output/.deeprag/cache/qdrant_db"
+collection_name = "hipporag_collection"
+persist_directory = "/app/output/.deeprag/cache/qdrant_db_hipporag"
 
 [graph]
 provider = "igraph"
-graph_path = "/app/output/tests/.raghub/storage/graphs"
+graph_path = "/app/output/tests/.raghub/storage/graphs/hipporag"
 
 [database]
 provider = "sqlite"
-db_url = "sqlite:////app/output/tests/.raghub/app_example.db"
+db_url = "sqlite:////app/output/tests/.raghub/app_hipporag.db"
 
 [hipporag]
 synonymy_edge_topk = 2047
@@ -51,10 +51,7 @@ dspy_file_path = "/app/configs/filter_llama3.3-70B-Instruct.json"
 
 [cache]
 provider = "disk_cache"
-cache_dir = "/app/output/tests/.raghub/cache"
+cache_dir = "/app/output/tests/.raghub/cache/hipporag"
+
 [interfaces]
-rag_provider="graphrag_app"
-
-
-
-
+rag_provider="hipporag_app"

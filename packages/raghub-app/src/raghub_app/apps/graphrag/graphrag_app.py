@@ -1,3 +1,4 @@
+import asyncio
 from typing import Dict, List
 
 import numpy as np
@@ -85,7 +86,10 @@ class GraphRAG(BaseRAGApp):
         """
         Create a new index in the GraphRAG application.
         """
-        await self._embedd_store.create_index(label)
+        if asyncio.iscoroutinefunction(self._embedd_store.create_index):
+            await self._embedd_store.create_index(label)
+        else:
+            self._embedd_store.create_index(label)
 
     async def retrieve(
         self, unique_name: str, queries: List[str], retrieve_top_k=5, lang="zh"

@@ -596,6 +596,9 @@ class IGraphStore(GraphStorage):
         for start_node in start_nodes:
             start_v: ig.Vertex = None
             try:
+                if "uid" not in self._graph[label].vs.attributes():
+                    logger.warning(f"Graph with label {label} does not have 'uid' attribute in vertices.")
+                    continue
                 start_v = self._graph[label].vs.find(uid=start_node)
             except ValueError as e:
                 logger.error(f"Error finding start node {start_node} in graph with label {label}: {e}")

@@ -40,7 +40,8 @@
     "python.testing.unittestEnabled": false,
     "python.testing.pytestArgs": [
         "-c",
-        "pytest.ini"
+        "pytest.ini",
+        "--tb=short"
     ],
     "python.testing.cwd": "${workspaceFolder}",
     "python.testing.autoTestDiscoverOnSaveEnabled": true,
@@ -54,5 +55,13 @@
         "${workspaceFolder}/packages/raghub-core/src",
         "${workspaceFolder}/packages/raghub-protos/src",
         "${workspaceFolder}/packages/raghub-interfaces/src"
-    ]
+    ],
+    // 测试环境变量配置 - 用于切换RAG模式
+    "python.envFile": "${workspaceFolder}/.env",
+    // 终端环境变量 - 默认测试模式配置
+    "terminal.integrated.env.linux": {
+        "RAGHUB_TEST_RAG_MODE": "both",
+        "RAGHUB_AUTO_START_SERVER": "true",
+        "RAGHUB_TEST_BASE_URL": "http://localhost:8000"
+    }
 }

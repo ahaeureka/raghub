@@ -105,6 +105,9 @@ class GraphRAGDAO(BaseGraphRAGDAO):
                 vertex.metadata.update(texts_dict[uid].metadata)
                 vertex.doc_id.extend(texts_dict[uid].doc_id)
                 vertex.description.update(texts_dict[uid].description)
+            logger.debug(
+                f"Updating existing vertices: {[v.content for v in filter_existing_vertices]} in index: {unique_name}"
+            )
             await self.graph_store.aupdate_vertices(unique_name, filter_existing_vertices)
         if not existing_vertices:
             logger.warning(f"No existing vertices found for index: {unique_name}")
@@ -115,6 +118,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
             logger.warning(f"No new vertices to add for index: {unique_name}")
             return existing_vertices
         # upsert existing vertices
+        logger.debug(f"Adding new vertices: {[v.content for v in new_vertices]} to index: {unique_name}")
         return await self.graph_store.aadd_graph_vertices(unique_name, new_vertices)
 
     async def delete(self, unique_name: str, doc_ids: List[str] | str) -> None:
@@ -129,7 +133,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         # search all entities and docs by doc_ids
         tasks = []
         for doc_id in doc_ids if isinstance(doc_ids, list) else [doc_ids]:
-            tasks.append(self.graph_store.asearch_neibors(doc_id))
+            tasks.append(self.graph_store.asearch_neibors(unique_name, doc_id))
         results: List[GraphModel] = await asyncio.gather(*tasks)
         if not results or all(not res for res in results):
             logger.warning(f"No vertices found for doc_ids: {doc_ids} in index: {unique_name}")
@@ -458,7 +462,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         Returns:
             GraphModel: The graph model containing the entities and their related information.
         """
-        return await self.graph_store.freestyle_search(index_name, entities, rel_type=RelationType.RELATION.value)
+        return await self.graph_store.freestyle_search(index_name, entities)
 
     async def explore_trigraph(self, index_name: str, entities: List[str]) -> GraphModel:
         graph = await self.graph_store.multi_hop_search(index_name, entities, rel_type=RelationType.RELATION.value)

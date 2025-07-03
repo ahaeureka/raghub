@@ -70,7 +70,6 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 f"[request_id: {request_id}] "
                 f"[error: {type(exc).__name__}: {str(exc)}] "
                 f"[time: {process_time:.3f}s]",
-                exc_info=True,
             )
 
             # Re-raise to let other handlers catch it
@@ -128,7 +127,7 @@ class WebAPI:
         )
         self._config = config
         self._setup_middleware()
-        self._setup_exception_handlers()
+        # self._setup_exception_handlers()
         self._setup_routes()
 
     def _setup_middleware(self):
@@ -215,16 +214,28 @@ class WebAPI:
             Returns:
                 JSONResponse with structured error information
             """
+            # 获取完整的调用栈
+            full_traceback = traceback.format_exc()
+
             logger.error(
                 f"ValueError occurred: {str(exc)} for {request.method} {request.url} "
-                f"[request_id: {getattr(request.state, 'request_id', 'unknown')}]",
+                f"[request_id: {getattr(request.state, 'request_id', 'unknown')}]\n"
+                f"Full traceback:\n{full_traceback}",
                 exc_info=True,
             )
+
+            # 在调试模式下返回详细的错误信息
+            error_detail = {"code": 400, "message": f"Invalid input: {str(exc)}", "type": "value_error"}
+
+            # 如果是调试模式，包含调用栈信息
+            if self._config and hasattr(self._config, "debug") and self._config.debug:
+                error_detail["traceback"] = full_traceback.split("\n")
+                error_detail["exception_type"] = type(exc).__name__
 
             return JSONResponse(
                 status_code=400,
                 content={
-                    "error": {"code": 400, "message": f"Invalid input: {str(exc)}", "type": "value_error"},
+                    "error": error_detail,
                     "success": False,
                     "request_id": getattr(request.state, "request_id", None),
                 },
@@ -243,22 +254,35 @@ class WebAPI:
             Returns:
                 JSONResponse with structured error information
             """
+            # 获取完整的调用栈
+            full_traceback = traceback.format_exc()
+
             # Log the full traceback for debugging
             logger.error(
                 f"Unhandled exception occurred: {type(exc).__name__}: {str(exc)} "
                 f"for {request.method} {request.url} "
-                f"[request_id: {getattr(request.state, 'request_id', 'unknown')}]\n{traceback.format_exc()}"
+                f"[request_id: {getattr(request.state, 'request_id', 'unknown')}]\n"
+                f"Full traceback:\n{full_traceback}"
             )
 
-            # Don't expose internal error details in production
-            error_message = "An internal server error occurred"
+            # 构建错误响应
+            error_detail = {"code": 500, "message": "An internal server error occurred", "type": "internal_error"}
+
+            # 在调试模式下提供详细信息
             if self._config and hasattr(self._config, "debug") and self._config.debug:
-                error_message = f"{type(exc).__name__}: {str(exc)}"
+                error_detail.update(
+                    {
+                        "message": f"{type(exc).__name__}: {str(exc)}",
+                        "exception_type": type(exc).__name__,
+                        "traceback": full_traceback.split("\n"),
+                        "stack_trace": traceback.format_stack(),
+                    }
+                )
 
             return JSONResponse(
                 status_code=500,
                 content={
-                    "error": {"code": 500, "message": error_message, "type": "internal_error"},
+                    "error": error_detail,
                     "success": False,
                     "request_id": getattr(request.state, "request_id", None),
                 },

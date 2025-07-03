@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
+from loguru import logger
 from raghub_core.chat.base_chat import BaseChat
 from raghub_core.operators.graph.graph_extractor_operator import GraphExtractorOperator
 from raghub_core.operators.graph.prompts import GraphExtractorPrompt
@@ -89,4 +90,11 @@ class DefaultGraphRAGOperators(GraphRAGOperators):
         return await self._query_indent_extractor.execute(input, lang=lang)
 
     async def extract_graph(self, input: Dict[str, Any], lang="zh") -> GraphExtractOperatorOutputModel:
-        return await self._graph_extractor.execute(input, lang=lang)
+        try:
+            return await self._graph_extractor.execute(input, lang=lang)
+        except Exception as e:
+            import traceback
+
+            logger.error(f"Error extracting graph: {str(e)}\n{traceback.format_exc()}")
+            # Handle exceptions and return an empty model or raise as needed
+            raise e

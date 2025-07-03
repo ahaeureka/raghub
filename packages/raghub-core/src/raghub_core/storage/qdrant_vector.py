@@ -103,7 +103,7 @@ class QdrantVector(VectorStorage):
 
         if index_name in self._vector_stores:
             return self._vector_stores[index_name]
-
+        # await asyncio.sleep(0.01)  # Yield control to the event loop
         # Create collection if it doesn't exist
         try:
             self.client.get_collection(index_name)

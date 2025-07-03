@@ -174,7 +174,7 @@ class GraphExtractorPrompt(BasePrompt):
                 "..."
                 "\n"
                 "[Text]:\n"
-                "{passsage}"
+                "{passage}"
                 "```\n"
                 "\n"
                 "Output:\n"

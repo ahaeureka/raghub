@@ -1,15 +1,15 @@
 """
-RAGHub Client 基础测试类
-提供测试的通用功能和工具方法
+RAGHub Client Base Test Class
+Provides common functionality and utilities for testing
 """
 
 import logging
 import os
 
-# 使用绝对导入避免模块路径冲突
+# Use absolute imports to avoid module path conflicts
 import sys
 import uuid
-from typing import List
+from typing import List, Optional
 
 from raghub_client.rag_hub_client import RAGHubClient
 from raghub_protos.models.chat_model import (
@@ -33,70 +33,82 @@ logger = logging.getLogger(__name__)
 
 
 class BaseRAGTest:
-    """RAG 测试基类"""
+    """RAG Test Base Class"""
 
-    def __init__(self, use_shared_index: bool = False):
+    def __init__(self, use_shared_index: bool = False, rag_mode: Optional[str] = None):
+        """
+        Initialize RAG test instance
+
+        Args:
+            use_shared_index: Whether to use shared index across tests
+            rag_mode: RAG mode ('hipporag', 'graphrag', or None for default)
+        """
         self.client = RAGHubClient(**TestConfig.get_client_config())
+        self.rag_mode = rag_mode or "default"
+
+        # Create mode-specific index names
+        mode_suffix = f"_{self.rag_mode}" if self.rag_mode != "default" else ""
 
         if use_shared_index:
-            # 使用固定的共享索引名称
-            self.test_knowledge_id = f"{TestConfig.TEST_KNOWLEDGE_ID}_shared"
-            self.test_index_name = f"{TestConfig.TEST_INDEX_NAME}_shared"
+            # Use fixed shared index names with mode suffix
+            self.test_knowledge_id = f"{TestConfig.TEST_KNOWLEDGE_ID}_shared{mode_suffix}"
+            self.test_index_name = f"{TestConfig.TEST_INDEX_NAME}_shared{mode_suffix}"
         else:
-            # 使用唯一的索引名称
-            self.test_knowledge_id = f"{TestConfig.TEST_KNOWLEDGE_ID}_{uuid.uuid4().hex[:8]}"
-            self.test_index_name = f"{TestConfig.TEST_INDEX_NAME}_{uuid.uuid4().hex[:8]}"
+            # Use unique index names with mode suffix
+            unique_id = uuid.uuid4().hex[:8]
+            self.test_knowledge_id = f"{TestConfig.TEST_KNOWLEDGE_ID}_{unique_id}{mode_suffix}"
+            self.test_index_name = f"{TestConfig.TEST_INDEX_NAME}_{unique_id}{mode_suffix}"
 
         self.created_indices: List[str] = []
         self.added_document_ids: List[str] = []
         self._is_shared = use_shared_index
 
     async def setup_test_environment(self):
-        """设置测试环境"""
-        logger.info(f"设置测试环境: knowledge_id={self.test_knowledge_id}")
+        """Setup test environment"""
+        logger.info(f"Setting up test environment: knowledge_id={self.test_knowledge_id}, mode={self.rag_mode}")
         try:
-            # 创建测试索引
+            # Create test index
             await self.create_test_index()
-            # 添加测试文档
+            # Add test documents
             await self.add_test_documents()
         except Exception as e:
-            logger.error(f"设置测试环境失败: {e}")
+            logger.error(f"Failed to setup test environment: {e}")
             raise
 
     async def cleanup_test_environment(self):
-        """清理测试环境"""
+        """Cleanup test environment"""
         if self._is_shared:
-            # 共享索引模式下，只在最后清理
-            logger.info(f"共享索引模式，跳过清理: knowledge_id={self.test_knowledge_id}")
+            # In shared index mode, only cleanup at the end
+            logger.info(f"Shared index mode, skipping cleanup: knowledge_id={self.test_knowledge_id}")
             return
 
-        logger.info(f"清理测试环境: knowledge_id={self.test_knowledge_id}")
+        logger.info(f"Cleaning up test environment: knowledge_id={self.test_knowledge_id}, mode={self.rag_mode}")
         try:
-            # 删除添加的文档
+            # Delete added documents
             if self.added_document_ids:
                 await self.delete_test_documents()
         except Exception as e:
-            logger.warning(f"清理测试环境失败: {e}")
+            logger.warning(f"Failed to cleanup test environment: {e}")
 
     async def force_cleanup(self):
-        """强制清理测试环境（包括共享索引）"""
-        logger.info(f"强制清理测试环境: knowledge_id={self.test_knowledge_id}")
+        """Force cleanup test environment (including shared index)"""
+        logger.info(f"Force cleaning up test environment: knowledge_id={self.test_knowledge_id}, mode={self.rag_mode}")
         try:
             if self.added_document_ids:
                 await self.delete_test_documents()
         except Exception as e:
-            logger.warning(f"强制清理测试环境失败: {e}")
+            logger.warning(f"Failed to force cleanup test environment: {e}")
 
     async def create_test_index(self):
-        """创建测试索引"""
+        """Create test index"""
         request = CreateIndexRequest(unique_name=self.test_knowledge_id)
         response = await self.client.rag_service_create_index(request)
         assert response.unique_name == self.test_knowledge_id
         self.created_indices.append(self.test_knowledge_id)
-        logger.info(f"创建测试索引成功: {self.test_knowledge_id}")
+        logger.info(f"Test index created successfully: {self.test_knowledge_id} (mode: {self.rag_mode})")
 
     async def add_test_documents(self):
-        """添加测试文档"""
+        """Add test documents"""
         documents = []
         for doc_data in TestConfig.TEST_DOCUMENTS:
             document = RAGDocument(
@@ -113,29 +125,31 @@ class BaseRAGTest:
 
         assert response.documents is not None
         assert len(response.documents) == len(TestConfig.TEST_DOCUMENTS)
-        logger.info(f"添加测试文档成功: {len(response.documents)} 个文档")
+        logger.info(f"Test documents added successfully: {len(response.documents)} documents (mode: {self.rag_mode})")
 
         return response
 
     async def delete_test_documents(self):
-        """删除测试文档"""
+        """Delete test documents"""
         if not self.added_document_ids:
-            logger.info("没有需要删除的文档")
+            logger.info("No documents to delete")
             return
 
         request = DeleteDocumentsRequest(knowledge_id=self.test_knowledge_id, document_ids=self.added_document_ids)
         response = await self.client.rag_service_delete_documents(request)
-        logger.info(f"删除测试文档成功: {len(response.deleted_ids)} 个文档")
+        logger.info(
+            f"Test documents deleted successfully: {len(response.deleted_ids)} documents (mode: {self.rag_mode})"
+        )
 
         return response
 
     def create_test_retrieval_request(self, query: str, top_k: int = 5) -> RetrievalRequest:
-        """创建测试检索请求"""
+        """Create test retrieval request"""
         retrieval_setting = RetrievalSetting(top_k=top_k)
         return RetrievalRequest(knowledge_id=self.test_knowledge_id, query=query, retrieval_setting=retrieval_setting)
 
     def create_test_chat_request(self, question: str, top_k: int = 5) -> CreateChatCompletionRequest:
-        """创建测试聊天请求"""
+        """Create test chat request"""
         messages = [ChatMessage(role="user", content=question)]
         retrieval_setting = RetrievalSetting(top_k=top_k)
 
@@ -144,9 +158,9 @@ class BaseRAGTest:
         )
 
     def assert_retrieval_response(self, response, expected_min_records: int = 1):
-        """验证检索响应"""
+        """Validate retrieval response"""
         assert response is not None
-        assert response.error is None, f"检索出错: {response.error}"
+        assert response.error is None, f"Retrieval error: {response.error}"
         assert response.records is not None
         assert len(response.records) >= expected_min_records
 
@@ -156,7 +170,7 @@ class BaseRAGTest:
             assert record.title is not None
 
     def assert_chat_response(self, responses: List[CreateChatCompletionResponse], expected_min_responses: int = 1):
-        """验证聊天响应"""
+        """Validate chat response"""
         assert len(responses) >= expected_min_responses
 
         for response in responses:

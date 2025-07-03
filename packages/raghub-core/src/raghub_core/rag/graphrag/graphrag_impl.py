@@ -7,6 +7,7 @@ GraphRAG implementation for RAG (Retrieval-Augmented Generation) using a graph d
 
 import asyncio
 import json
+import traceback
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 from loguru import logger
@@ -199,7 +200,7 @@ class GraphRAGImpl(BaseRAG):
                     doc_id=[metadata.get("doc_id")] if "doc_id" in metadata else [],
                 )
             )
-
+            logger.debug(f"Converted entity to vertex: {entity.content} with description: {entity.summary}")
         # Add the source document as a vertex
         vertices.append(
             GraphVertex(
@@ -382,6 +383,7 @@ class GraphRAGImpl(BaseRAG):
         # Handle case where no entities were extracted
         if not entities:
             logger.warning(f"No entities extracted from document: {document.content}")
+            await self.storage.add_documents(self._doc_index.format(index_name), [document])
             return document
 
         # Store entities in the entities index
@@ -400,7 +402,7 @@ class GraphRAGImpl(BaseRAG):
         # Execute storage operations and handle errors
         storage_result = await asyncio.gather(*storage_tasks, return_exceptions=False)
         for r in storage_result:
-            if isinstance(r, Exception):
+            if isinstance(r, BaseException):
                 raise RuntimeError(f"Add documents error:{str(r)}") from r
 
         # Add entity-document inclusion edges
@@ -451,7 +453,7 @@ class GraphRAGImpl(BaseRAG):
                 batch_results = await self._process_document_batch(index_name, batch, lang)
                 all_results.extend(batch_results)
             except Exception as e:
-                logger.error(f"Error processing batch {i // batch_size + 1}: {e}")
+                logger.error(f"Error processing batch {i // batch_size + 1}: {e}\n{traceback.format_exc()}")
                 # Continue processing next batch rather than failing completely
                 continue
 
@@ -495,7 +497,7 @@ class GraphRAGImpl(BaseRAG):
         valid_results = []
         valid_documents = []
         for i, (doc, result) in enumerate(zip(documents, results)):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.error(f"Error extracting graph from document {doc.uid}: {result}")
                 continue
             valid_results.append(result)
@@ -736,7 +738,7 @@ class GraphRAGImpl(BaseRAG):
             if graph and graph.vertices:
                 # Extract documents from graph vertices
                 docs = [
-                    Document(content=doc.content, summary=doc.description[doc.uid], uid=doc.uid, metadata=doc.metadata)
+                    Document(content=doc.content, summary="", uid=doc.uid, metadata=doc.metadata)
                     for doc in graph.vertices
                     if doc.namespace == Namespace.DOC.value
                 ]
@@ -822,7 +824,7 @@ class GraphRAGImpl(BaseRAG):
         return graph
 
     async def _search_similar_entities(
-        self, index_name: str, keywords: List[str], top_k: int = 5, score_threshold: Optional[float] = 0.8
+        self, index_name: str, keywords: List[str], top_k: int = 5, score_threshold: Optional[float] = 0.7
     ) -> List[Document]:
         """
         Search for entities similar to the given keywords using embedding similarity.
@@ -867,7 +869,7 @@ class GraphRAGImpl(BaseRAG):
         query: str,
         history_context: Optional[str] = "",
         top_k: int = 5,
-        similarity_threshold=0.7,
+        similarity_threshold=0.2,
         prompt: Optional[str] = None,
         llm: Optional[BaseChat] = None,
         reranker: Optional[BaseRerank] = None,
@@ -875,17 +877,17 @@ class GraphRAGImpl(BaseRAG):
     ) -> AsyncIterator[QAChatResponse]:
         from langchain.prompts import ChatPromptTemplate
 
-        # 并行执行图检索和嵌入检索以提高性能
+        # Execute graph retrieval and embedding retrieval in parallel to improve performance
         graph_task = self._retrieve_query(unique_name, query, top_k)
         embedding_task = self.embedding_retrieve(unique_name, queries=[query], filter=filter)
 
         result, embedding_retrieve_result = await asyncio.gather(graph_task, embedding_task)
 
-        # 合并检索结果
+        # Merge retrieval results
         docs = embedding_retrieve_result.get(query, [])
         result.docs.extend([doc.document for doc in docs if doc.document.content])
 
-        # 去重处理
+        # Remove duplicates
         seen_uids = set()
         unique_docs = []
         for doc in result.docs:
@@ -894,16 +896,16 @@ class GraphRAGImpl(BaseRAG):
                 seen_uids.add(doc.uid)
         result.docs = unique_docs
 
-        # 重排序
+        # Reranking
         reranker = reranker or self._reranker
         if reranker:
-            logger.debug(f"Reranking results for query: {query}")
-            rerank_docs = await reranker.rerank(unique_name, query, result.docs)
+            rerank_docs = await reranker.rerank(query, result.docs)
+            logger.debug(f"Rerank docs: {rerank_docs}")
             uid_to_docs = {doc.uid: doc for doc in result.docs}
-            result.docs = [uid_to_docs[uid] for uid, score in rerank_docs if score >= similarity_threshold]
+            result.docs = [uid_to_docs[uid] for uid, score in rerank_docs.items() if score >= similarity_threshold]
             logger.debug(f"Reranked documents: {[doc.content for doc in result.docs]}")
 
-        # 构建上下文
+        # Build context
         lang = detect_language(query)
         if lang not in ["zh", "en"]:
             lang = "en"
@@ -913,7 +915,7 @@ class GraphRAGImpl(BaseRAG):
             else result.context
         )
 
-        # 构建提示词
+        # Build prompt template
         should_container_vars = ["question", "context", "knowledge_graph", "knowledge_graph_for_doc"]
 
         if prompt:
@@ -947,7 +949,7 @@ class GraphRAGImpl(BaseRAG):
             ans: ChatResponse = answer
             context = {
                 "context": result.context,
-                "knowledge_graph": result.graph.model_dump(),
+                "knowledge_graph": result.graph.model_dump() if result.graph else "",
                 "knowledge_graph_for_doc": "\n".join([doc.content for doc in result.docs]),
             }
             yield QAChatResponse(

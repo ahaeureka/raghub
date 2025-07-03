@@ -188,9 +188,12 @@ class RAGHubServerManager:
 _server_manager: Optional[RAGHubServerManager] = None
 
 
-async def get_server_manager() -> RAGHubServerManager:
+async def get_server_manager(rag_mode: Optional[str] = None) -> RAGHubServerManager:
     """
     Get or create the global server manager instance
+
+    Args:
+        rag_mode: Optional RAG mode to use for server configuration
 
     Returns:
         RAGHubServerManager: The server manager instance
@@ -199,22 +202,27 @@ async def get_server_manager() -> RAGHubServerManager:
     if _server_manager is None:
         from .config import TestConfig
 
+        config_path = TestConfig.get_server_config_path(rag_mode)
+
         _server_manager = RAGHubServerManager(
-            config_path=TestConfig.SERVER_CONFIG_PATH,
+            config_path=config_path,
             base_url=TestConfig.BASE_URL,
             startup_timeout=TestConfig.SERVER_STARTUP_TIMEOUT,
         )
     return _server_manager
 
 
-async def ensure_server_running() -> bool:
+async def ensure_server_running(rag_mode: Optional[str] = None) -> bool:
     """
     Ensure the RAGHub server is running
+
+    Args:
+        rag_mode: Optional RAG mode to use for server configuration
 
     Returns:
         bool: True if server is running, False otherwise
     """
-    manager = await get_server_manager()
+    manager = await get_server_manager(rag_mode)
     if not manager.is_running:
         return await manager.start_server()
     return True

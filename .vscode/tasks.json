@@ -1,0 +1,174 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Test: HippoRAG Mode",
+            "type": "shell",
+            "command": "pytest",
+            "args": [
+                "packages/raghub-client/tests_client/test_mode_specific.py::TestHippoRAGOnly",
+                "-v",
+                "--tb=short"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "env": {
+                    "RAGHUB_TEST_RAG_MODE": "hipporag",
+                    "RAGHUB_AUTO_START_SERVER": "true",
+                    "RAGHUB_SERVER_CONFIG": "configs/test-hipporag.toml"
+                }
+            },
+            "problemMatcher": [
+                "$python"
+            ]
+        },
+        {
+            "label": "Test: GraphRAG Mode",
+            "type": "shell",
+            "command": "pytest",
+            "args": [
+                "packages/raghub-client/tests_client/test_mode_specific.py::TestGraphRAGOnly",
+                "-v",
+                "--tb=short"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "env": {
+                    "RAGHUB_TEST_RAG_MODE": "graphrag",
+                    "RAGHUB_AUTO_START_SERVER": "true",
+                    "RAGHUB_SERVER_CONFIG": "configs/test-graphrag.toml"
+                }
+            },
+            "problemMatcher": [
+                "$python"
+            ]
+        },
+        {
+            "label": "Test: Both Modes Comparison",
+            "type": "shell",
+            "command": "pytest",
+            "args": [
+                "packages/raghub-client/tests_client/test_mode_specific.py::TestModeSpecific",
+                "-v",
+                "--tb=short"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "env": {
+                    "RAGHUB_TEST_RAG_MODE": "both",
+                    "RAGHUB_AUTO_START_SERVER": "true"
+                }
+            },
+            "problemMatcher": [
+                "$python"
+            ]
+        },
+        {
+            "label": "Test: All Mode-Specific Tests",
+            "type": "shell",
+            "command": "pytest",
+            "args": [
+                "packages/raghub-client/tests_client/test_mode_specific.py",
+                "-v",
+                "--tb=short"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            },
+            "options": {
+                "env": {
+                    "RAGHUB_TEST_RAG_MODE": "both",
+                    "RAGHUB_AUTO_START_SERVER": "true"
+                }
+            },
+            "problemMatcher": [
+                "$python"
+            ]
+        },
+        {
+            "label": "Switch to HippoRAG Mode",
+            "type": "shell",
+            "command": "cp",
+            "args": [
+                ".env.hipporag",
+                ".env"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Switch to GraphRAG Mode",
+            "type": "shell",
+            "command": "cp",
+            "args": [
+                ".env.graphrag",
+                ".env"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Switch to Both Modes",
+            "type": "shell",
+            "command": "cp",
+            "args": [
+                ".env.both",
+                ".env"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Validate Test Framework",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "packages/raghub-client/tests_client/validate_framework.py"
+            ],
+            "group": "test",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "new"
+            }
+        }
+    ]
+}

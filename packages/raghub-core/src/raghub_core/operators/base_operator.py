@@ -36,7 +36,7 @@ class BaseOperator(ABC, Generic[TOperatorOutputModel]):
                 raise ValueError("output_cls must be set")
             return self.output_cls.model_validate(d)
         except Exception as e:
-            logger.error(f"Error in operator {self.name}: {e}")
+            logger.error(f"Error in operator {self.name}: {e} with {d}")
             logger.error(traceback.format_exc())
             raise
 
