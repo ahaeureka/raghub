@@ -380,39 +380,42 @@ class GraphRAGImpl(BaseRAG):
                 "#".join([edge.source, edge.relation_type, edge.target, edge.description[document.uid]])
             )
 
-        # Handle case where no entities were extracted
-        if not entities:
-            logger.warning(f"No entities extracted from document: {document.content}")
-            await self.storage.add_documents(self._doc_index.format(index_name), [document])
-            return document
+        try:
+            # Handle case where no entities were extracted
+            if not entities:
+                logger.warning(f"No entities extracted from document: {document.content}")
+                await self.storage.add_documents(self._doc_index.format(index_name), [document])
+                return document
+            # Store entities in the entities index
+            entities = await self.storage.add_documents(self._entities_index.format(index_name), entities)
 
-        # Store entities in the entities index
-        entities = await self.storage.add_documents(self._entities_index.format(index_name), entities)
+            # Prepare concurrent storage operations
+            storage_tasks = []
+            document = self._entities_bind_to_docs(entities, document)
 
-        # Prepare concurrent storage operations
-        storage_tasks = []
-        document = self._entities_bind_to_docs(entities, document)
+            # Add document and vertices concurrently
+            storage_tasks.append(self.storage.add_documents(self._doc_index.format(index_name), [document]))
+            storage_tasks.append(
+                self.storage.add_virtices(index_name, self._to_virtices(index_name, entities, document, entities_facts))
+            )
 
-        # Add document and vertices concurrently
-        storage_tasks.append(self.storage.add_documents(self._doc_index.format(index_name), [document]))
-        storage_tasks.append(
-            self.storage.add_virtices(index_name, self._to_virtices(index_name, entities, document, entities_facts))
-        )
+            # Execute storage operations and handle errors
+            storage_result = await asyncio.gather(*storage_tasks, return_exceptions=False)
+            for r in storage_result:
+                if isinstance(r, BaseException):
+                    raise RuntimeError(f"Add documents error:{str(r)}") from r
 
-        # Execute storage operations and handle errors
-        storage_result = await asyncio.gather(*storage_tasks, return_exceptions=False)
-        for r in storage_result:
-            if isinstance(r, BaseException):
-                raise RuntimeError(f"Add documents error:{str(r)}") from r
+            # Add entity-document inclusion edges
+            edges.extend(self._build_entity_chunk_edge(index_name, entities, document))
+            await self.storage.add_edges(index_name, edges)
 
-        # Add entity-document inclusion edges
-        edges.extend(self._build_entity_chunk_edge(index_name, entities, document))
-        await self.storage.add_edges(index_name, edges)
-
-        # Generate and store community summaries
-        communities = await self.summary_communities(index_name, lang)
-        if communities:
-            await self._save_communities(self._communities_index.format(index_name), communities, document.uid)
+            # Generate and store community summaries
+            communities = await self.summary_communities(index_name, lang)
+            if communities:
+                await self._save_communities(self._communities_index.format(index_name), communities, document.uid)
+        except Exception as e:
+            logger.error(f"Error adding document {document.uid} to graph: {e}\n{traceback.format_exc()}")
+            raise RuntimeError(f"Failed to add document {document.uid} to graph storage") from e
         return document
 
     async def add_documents(self, index_name, documents: List[Document], lang="en", batch_size: int = 10):
@@ -966,7 +969,13 @@ class GraphRAGImpl(BaseRAG):
 
         tasks = []
         for query in queries:
+            if not query:
+                logger.warning("Empty query detected, skipping retrieval.")
+                continue
             tasks.append(self._retrieve_query(unique_name, query, retrieve_top_k))
+        if not tasks:
+            logger.warning("No valid queries provided for retrieval.")
+            return {}
         results: List[GraphRAGRetrieveResultItem] = await asyncio.gather(*tasks)
         retrieve_results: Dict[str, List[RetrieveResultItem]] = {}
         for i, query in enumerate(queries):
@@ -992,8 +1001,11 @@ class GraphRAGImpl(BaseRAG):
         """
         embedding_retrieval_results: Dict[str, List[RetrieveResultItem]] = {}
         if len(queries) == 1:
+            if not queries[0]:
+                logger.warning("Empty query detected, skipping embedding retrieval.")
+                return {}
             embedding_retrieval_result = await self.storage.similar_search_with_scores(
-                self._doc_index.format(unique_name), queries[0], 100, filter
+                self._doc_index.format(unique_name), queries[0], 32, filter
             )
             embedding_retrieval_results[queries[0]] = [
                 RetrieveResultItem(document=doc, score=score, query=queries[0])
@@ -1003,7 +1015,11 @@ class GraphRAGImpl(BaseRAG):
             tasks = [
                 self.storage.similar_search_with_scores(self._doc_index.format(unique_name), query, 100, filter)
                 for query in queries
+                if query
             ]
+            if not tasks:
+                logger.warning("No valid queries provided for embedding retrieval.")
+                return {}
             results = await asyncio.gather(*tasks, return_exceptions=False)
             for i, query in enumerate(queries):
                 embedding_retrieval_results[query] = [

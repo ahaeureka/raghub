@@ -87,7 +87,9 @@ class RAGServiceImpl(RAGServiceServicer, ServiceBase):
         self, request: rag_pb2.DeleteDocumentsRequest, context
     ) -> rag_pb2.DeleteDocumentsResponse:
         """DeleteDocuments method implementation."""
-        await self.app.delete(unique_name=request.knowledge_id, docs_to_delete=request.document_ids)
+        await self.app.delete(
+            unique_name=request.knowledge_id, docs_to_delete=[str(uid) for uid in request.document_ids]
+        )
         response = rag_pb2.DeleteDocumentsResponse(deleted_ids=request.document_ids)
         return response
 

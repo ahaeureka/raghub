@@ -25,6 +25,7 @@ dependencies = [
  "openai>=1.75.0",
  "pillow>=11.2.1",
  "pydantic>=2.11.3",
+ "pymysql>=1.1.0",
  "pypdf[crypto]>=5.4.0",
  "python-igraph>=0.11.8",
  "scipy>=1.15.2",
@@ -36,7 +37,8 @@ dependencies = [
  "tomli>=2.2.1",
  "torch>=2.6.0",
  "tqdm>=4.67.1",
- "transformers>=4.51.3",
+"transformers<=4.52",
+
  "trio-asyncio>=0.15.0",
  "vllm>=0.8.4",
 ]

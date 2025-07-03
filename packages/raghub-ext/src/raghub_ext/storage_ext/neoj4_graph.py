@@ -24,6 +24,9 @@ class Neo4jGraphStorage(GraphStorage):
         self._user = username
         self._password = password
         self._graph = database
+        # 为每个图操作类型创建独立的锁字典
+        self._graph_locks: Dict[str, asyncio.Lock] = {}
+        self._locks_lock = asyncio.Lock()  # 保护锁字典的锁
         try:
             from neo4j import AsyncDriver
         except ImportError:
@@ -49,6 +52,11 @@ class Neo4jGraphStorage(GraphStorage):
         if self._driver:
             await self._driver.close()
             logger.debug("Neo4j driver connection closed.")
+
+        # 清理锁字典
+        async with self._locks_lock:
+            self._graph_locks.clear()
+            logger.debug("Cleared graph locks.")
 
     async def aadd_new_edges(self, label: str, edges: List[GraphEdge]):
         """Add new edges to the graph."""
@@ -231,50 +239,44 @@ class Neo4jGraphStorage(GraphStorage):
         if not self._driver:
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
 
+        graph_name = f"{label}_ppr_graph"
+
+        # 获取该图的专用锁
+        graph_lock = await self._get_graph_lock(graph_name)
+
         try:
-            # Check if graph exists
-            async with self._driver.session() as session:
-                graph_name = f"{label}_ppr_graph"
-                await session.run(
-                    f"CALL gds.graph.drop('{graph_name}', false)",
-                )
-                create_graph_query = f"""
-                MATCH (source:{label})-[r]->(target:{label})
-                RETURN gds.graph.project(
-                $graph_name,
-                  source,
-                  target,
-                {{ relationshipProperties: r {{ .weight }} }},
-                {{ undirectedRelationshipTypes: ['*'] }}
-                )"""
-                await session.run(create_graph_query, graph_name=graph_name)
-                logger.info(f"Graph '{graph_name}' created successfully.")
-
-                query = f"""
-                UNWIND $pairs AS pair
-                MATCH (n:{label} {{uid: pair.name}})
-                WITH collect([n, pair.weight]) AS sourceNodes
-                CALL gds.pageRank.stream(
-                    $graphName,
-                    {{
-                        maxIterations: 20,
-                        dampingFactor: $damping,
-                        sourceNodes: sourceNodes
-                    }}
-                )
-                YIELD nodeId, score
-                RETURN gds.util.asNode(nodeId).uid AS name, score
-                ORDER BY score DESC, name ASC
-                """
-                logger.debug(f"Running personalized PageRank vertices_with_weight: {vertices_with_weight}")
-                result = await session.run(
-                    query,
-                    pairs=[{"name": name, "weight": value} for name, value in vertices_with_weight.items()],
-                    damping=damping,
-                    graphName=graph_name,
-                )
-                return {record["name"]: record["score"] async for record in result}
-
+            # 使用锁保护整个PageRank计算过程
+            async with graph_lock:
+                async with self._driver.session() as session:
+                    # 确保图存在
+                    graph_ready = await self._ensure_graph_exists(session, graph_name, label)
+                    if not graph_ready:
+                        logger.warning(f"Failed to prepare graph {graph_name}")
+                        return {}
+                    query = f"""
+                    UNWIND $pairs AS pair
+                    MATCH (n:{label} {{uid: pair.name}})
+                    WITH collect([n, pair.weight]) AS sourceNodes
+                    CALL gds.pageRank.stream(
+                        $graphName,
+                        {{
+                            maxIterations: 20,
+                            dampingFactor: $damping,
+                            sourceNodes: sourceNodes
+                        }}
+                    )
+                    YIELD nodeId, score
+                    RETURN gds.util.asNode(nodeId).uid AS name, score
+                    ORDER BY score DESC, name ASC
+                    """
+                    logger.debug(f"Running personalized PageRank vertices_with_weight: {vertices_with_weight}")
+                    result = await session.run(
+                        query,
+                        pairs=[{"name": name, "weight": value} for name, value in vertices_with_weight.items()],
+                        damping=damping,
+                        graphName=graph_name,
+                    )
+                    return {record["name"]: record["score"] async for record in result}
         except Exception as e:
             logger.error(f"Error in personalized_pagerank: {e}")
             raise
@@ -644,83 +646,102 @@ class Neo4jGraphStorage(GraphStorage):
         """Run community discovery with leiden algorithm."""
         if not self._driver:
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
+
+        graph_name = f"{label}_community_graph"  # Unique graph name for each discovery
+
+        # 获取该图的专用锁
+        graph_lock = await self._get_graph_lock(graph_name)
+
         try:
-            # Prepare leiden parameters
-            leiden_config: Dict[str, Any] = {"writeProperty": "communityId", "randomSeed": 19}
+            # 使用锁保护整个社区发现过程
+            async with graph_lock:
+                # Prepare leiden parameters
+                leiden_config: Dict[str, Any] = {"writeProperty": "communityId", "randomSeed": 19}
 
-            # Add optional parameters if provided
-            if resolution_parameter != 0.8:
-                leiden_config["gamma"] = resolution_parameter
+                # Add optional parameters if provided
+                if resolution_parameter != 0.8:
+                    leiden_config["gamma"] = resolution_parameter
 
-            if beta != 0.1:
-                leiden_config["theta"] = beta
+                if beta != 0.1:
+                    leiden_config["theta"] = beta
 
-            if n_iterations > 0:
-                leiden_config["maxLevels"] = n_iterations
+                if n_iterations > 0:
+                    leiden_config["maxLevels"] = n_iterations
 
-            # Add any additional parameters from kwargs
-            leiden_config.update(kwargs)
+                # Add any additional parameters from kwargs
+                leiden_config.update(kwargs)
 
-            community_ids: List[str] = []
+                community_ids: List[str] = []
 
-            # Execute leiden community detection
-            async with self._driver.session(database=self._graph) as session:
-                # Check if graph exists
-                graph_name = f"{label}_community_graph"
-                await session.run(
-                    f"CALL gds.graph.drop('{graph_name}', false)",
-                )
+                # Execute leiden community detection
+                async with self._driver.session(database=self._graph) as session:
+                    # 确保图存在
+                    graph_ready = await self._ensure_graph_exists(session, graph_name, label)
+                    if not graph_ready:
+                        logger.warning(f"Failed to prepare graph {graph_name}")
+                        return []
 
-                # Create graph if it doesn't exist
-                await session.run(
-                    f"""
-                    MATCH (source:{label})-[r]->(target:{label})
-                    RETURN gds.graph.project(
-                    $graph_name,
-                      source,
-                      target,
-                      {{}},
-                      {{ undirectedRelationshipTypes: ['*'] }}
+                    # Run leiden algorithm
+                    logger.info(f"Running leiden community discovery with config: {leiden_config}")
+                    try:
+                        leiden_result = await session.run(
+                            """
+                            CALL gds.leiden.write($graph_name, $config)
+                            YIELD communityCount, nodePropertiesWritten
+                            RETURN communityCount, nodePropertiesWritten
+                            """,
+                            graph_name=graph_name,
+                            config=leiden_config,
                         )
-                    """,
-                    graph_name=graph_name,
-                )
-                logger.info(f"Graph '{graph_name}' created successfully.")
-                # Run leiden algorithm
-                logger.info(f"Running leiden community discovery with config: {leiden_config}")
-                leiden_result = await session.run(
-                    """
-                    CALL gds.leiden.write($graph_name, $config)
-                    YIELD communityCount, nodePropertiesWritten
-                    RETURN communityCount, nodePropertiesWritten
-                    """,
-                    graph_name=graph_name,
-                    config=leiden_config,
-                )
 
-                # Get the result
-                record = await leiden_result.single()
-                if record and record["communityCount"] > 0:
-                    logger.info(
-                        f"Found {record['communityCount']} communities, updated {record['nodePropertiesWritten']} nodes"
-                    )
+                        # Get the result
+                        record = await leiden_result.single()
+                        if record and record["communityCount"] > 0:
+                            logger.info(
+                                f"Found {record['communityCount']} communities, "
+                                f"updated {record['nodePropertiesWritten']} nodes"
+                            )
 
-                    # Query community IDs directly using standard Cypher
-                    community_query = f"""
-                    MATCH (n:{label}) 
-                    WHERE n.communityId IS NOT NULL 
-                    RETURN collect(DISTINCT n.communityId) AS communityIds
-                    """
+                            # Query community IDs directly using standard Cypher
+                            community_query = f"""
+                            MATCH (n:{label}) 
+                            WHERE n.communityId IS NOT NULL 
+                            RETURN collect(DISTINCT n.communityId) AS communityIds
+                            """
 
-                    community_result = await session.run(community_query)
-                    community_record = await community_result.single()
+                            community_result = await session.run(community_query)
+                            community_record = await community_result.single()
 
-                    if community_record:
-                        community_ids = community_record["communityIds"]
-                        logger.info(f"Retrieved {community_ids} unique community IDs")
-                        return community_ids
+                            if community_record:
+                                community_ids = community_record["communityIds"]
+                                logger.info(f"Retrieved {len(community_ids)} unique community IDs")
+                                return community_ids
+                        else:
+                            logger.warning("No communities found or leiden algorithm returned empty result")
 
-                return []
+                    except Exception as leiden_error:
+                        if "already exists" in str(leiden_error).lower():
+                            logger.warning(f"Graph conflict during leiden execution: {leiden_error}")
+                            # 尝试查询已存在的社区
+                            try:
+                                community_query = f"""
+                                MATCH (n:{label}) 
+                                WHERE n.communityId IS NOT NULL 
+                                RETURN collect(DISTINCT n.communityId) AS communityIds
+                                """
+                                community_result = await session.run(community_query)
+                                community_record = await community_result.single()
+                                if community_record and community_record["communityIds"]:
+                                    community_ids = community_record["communityIds"]
+                                    logger.info(f"Retrieved {len(community_ids)} existing community IDs")
+                                    return community_ids
+                            except Exception as query_error:
+                                logger.error(f"Error querying existing communities: {query_error}")
+                        else:
+                            logger.error(f"Error in leiden algorithm: {leiden_error}")
+                            raise
+
+                    return []
 
         except Exception as e:
             logger.error(f"Error discovering communities: {e}")
@@ -923,51 +944,246 @@ class Neo4jGraphStorage(GraphStorage):
         )
 
     async def freestyle_search(self, label: str, entities: List[str], max_hops: int = 3) -> GraphModel | None:
-        """Perform a freestyle search in the graph."""
+        """
+        Perform a freestyle search in the graph.
+
+        FreestyleQuestion：不属于以上四类的问题。搜索所有相关实体及以其为中心的两跳子图
+        This method searches for all entities related to the given entities and returns
+        a subgraph centered around them within the specified number of hops.
+        """
         if not self._driver:
             raise ValueError("Neo4j driver is not initialized. Call init() first.")
 
         try:
             async with self._driver.session() as session:
-                # Search for vertices that contain any of the entities
-                query = f"""
+                # First query: get all vertices (starting and connected)
+                vertex_query = f"""
                 UNWIND $entities AS entity
                 MATCH (n:{label})
                 WHERE n.content CONTAINS entity OR n.name CONTAINS entity
-                WITH DISTINCT n
-                MATCH path = (n)-[*1..{max_hops}]-(connected)
-                WITH DISTINCT nodes(path) as path_nodes, relationships(path) as path_rels
-                UNWIND path_nodes AS node
-                WITH DISTINCT node, path_rels
-                UNWIND path_rels AS rel
-                RETURN 
-                    DISTINCT properties(node) as vertex_props,
-                    properties(rel) as edge_props,
+                WITH DISTINCT n AS start_node
+                
+                // Get start nodes first
+                WITH collect(DISTINCT start_node) AS start_nodes
+                
+                // Get connected nodes within max_hops separately  
+                UNWIND start_nodes AS start_node
+                OPTIONAL MATCH (start_node)-[*1..{max_hops}]-(connected:{label})
+                WITH start_nodes, collect(DISTINCT connected) AS connected_nodes
+                
+                // Combine start nodes and connected nodes
+                WITH start_nodes + connected_nodes AS all_nodes
+                UNWIND all_nodes AS node
+                WITH node
+                WHERE node IS NOT NULL
+                RETURN DISTINCT properties(node) AS vertex_props
                 """
 
-                result = await session.run(query, entities=entities)
+                # Second query: get all edges between vertices
+                edge_query = f"""
+                UNWIND $entities AS entity
+                MATCH (start:{label})
+                WHERE start.content CONTAINS entity OR start.name CONTAINS entity
+                WITH DISTINCT start
+                
+                MATCH path = (start)-[*1..{max_hops}]-(connected:{label})
+                UNWIND relationships(path) AS rel
+                RETURN DISTINCT properties(rel) AS edge_props
+                """
 
                 vertices = []
                 edges = []
 
-                async for record in result:
+                # Execute vertex query
+                vertex_result = await session.run(vertex_query, entities=entities)
+                async for record in vertex_result:
                     vertex_props = record["vertex_props"]
-                    edge_props = record["edge_props"]
-
                     if vertex_props:
-                        vertex = GraphVertex(**self._loads([vertex_props])[0])
+                        vertex = self._loads([vertex_props])[0]
                         vertices.append(vertex)
 
-                    if edge_props:
-                        edge = GraphEdge(
-                            **self._loads([edge_props])[0],
-                        )
-                        edges.append(edge)
+                # Execute edge query only if we have vertices
+                if vertices:
+                    try:
+                        edge_result = await session.run(edge_query, entities=entities)
+                        async for record in edge_result:
+                            edge_props = record["edge_props"]
+                            if edge_props:
+                                edge = self._loads([edge_props])[0]
+                                edges.append(edge)
+                    except Exception as e:
+                        logger.warning(f"Error getting edges in freestyle search: {e}")
+                        # Continue with just vertices if edge query fails
+
+                if vertices or edges:
+                    logger.debug(f"Freestyle search found {len(vertices)} vertices and {len(edges)} edges")
+                    return GraphModel(vertices=vertices, edges=edges)
+                return None
+
+        except Exception as e:
+            logger.error(f"Error in freestyle search: {e}")
+            # Fallback to simpler query if APOC functions are not available
+            return await self._freestyle_search_fallback(label, entities, max_hops)
+
+    async def _freestyle_search_fallback(self, label: str, entities: List[str], max_hops: int = 3) -> GraphModel | None:
+        """
+        Fallback method for freestyle search when APOC functions are not available.
+        Uses simpler Cypher queries without APOC functions.
+        """
+        if not self._driver:
+            raise ValueError("Neo4j driver is not initialized. Call init() first.")
+
+        try:
+            async with self._driver.session() as session:
+                # First, get all matching starting vertices
+                start_vertex_query = f"""
+                UNWIND $entities AS entity
+                MATCH (n:{label})
+                WHERE n.content CONTAINS entity OR n.name CONTAINS entity
+                RETURN DISTINCT properties(n) as vertex_props
+                """
+
+                # Then get vertices within max_hops from starting vertices
+                connected_vertex_query = f"""
+                UNWIND $entities AS entity
+                MATCH (n:{label})
+                WHERE n.content CONTAINS entity OR n.name CONTAINS entity
+                WITH DISTINCT n
+                OPTIONAL MATCH path = (n)-[*1..{max_hops}]-(connected:{label})
+                WITH n, path, connected
+                WHERE path IS NOT NULL
+                WITH collect(DISTINCT n) + collect(DISTINCT connected) AS all_nodes
+                UNWIND all_nodes AS node
+                RETURN DISTINCT properties(node) as vertex_props
+                """
+
+                # Get edges between vertices
+                edge_query = f"""
+                UNWIND $entities AS entity
+                MATCH (n:{label})
+                WHERE n.content CONTAINS entity OR n.name CONTAINS entity
+                WITH DISTINCT n
+                MATCH path = (n)-[*1..{max_hops}]-(connected:{label})
+                WITH relationships(path) AS path_rels
+                UNWIND path_rels AS rel
+                RETURN DISTINCT properties(rel) as edge_props
+                """
+
+                vertices = []
+                edges = []
+
+                # Execute start vertex query
+                start_result = await session.run(start_vertex_query, entities=entities)
+                async for record in start_result:
+                    vertex_props = record["vertex_props"]
+                    if vertex_props:
+                        vertex = self._loads([vertex_props])[0]
+                        vertices.append(vertex)
+
+                # Execute connected vertex query
+                try:
+                    connected_result = await session.run(connected_vertex_query, entities=entities)
+                    async for record in connected_result:
+                        vertex_props = record["vertex_props"]
+                        if vertex_props:
+                            vertex = self._loads([vertex_props])[0]
+                            # Check if vertex is already in the list
+                            if not any(v.uid == vertex.uid for v in vertices):
+                                vertices.append(vertex)
+                except Exception as e:
+                    logger.warning(f"Error getting connected vertices in fallback search: {e}")
+
+                # Execute edge query only if we have vertices
+                if vertices:
+                    try:
+                        edge_result = await session.run(edge_query, entities=entities)
+                        async for record in edge_result:
+                            edge_props = record["edge_props"]
+                            if edge_props:
+                                edge = self._loads([edge_props])[0]
+                                edges.append(edge)
+                    except Exception as e:
+                        logger.warning(f"Error getting edges in fallback search: {e}")
+                        # Continue with just vertices if edge query fails
 
                 if vertices or edges:
                     return GraphModel(vertices=vertices, edges=edges)
                 return None
 
         except Exception as e:
-            logger.error(f"Error in multi-hop search: {e}")
-            raise
+            logger.error(f"Error in freestyle search fallback: {e}")
+            return None
+
+    async def _get_graph_lock(self, graph_name: str) -> asyncio.Lock:
+        """获取指定图名的锁，如果不存在则创建"""
+        async with self._locks_lock:
+            if graph_name not in self._graph_locks:
+                self._graph_locks[graph_name] = asyncio.Lock()
+            return self._graph_locks[graph_name]
+
+    async def _safe_drop_graph(self, session, graph_name: str) -> bool:
+        """安全地删除图，如果图不存在则返回False"""
+        try:
+            result = await session.run(
+                "CALL gds.graph.drop($graph_name, false) YIELD graphName RETURN graphName", graph_name=graph_name
+            )
+            record = await result.single()
+            if record:
+                logger.debug(f"Successfully dropped graph: {graph_name}")
+                return True
+            return False
+        except Exception as e:
+            if "does not exist" in str(e).lower() or "notfound" in str(e).lower():
+                logger.debug(f"Graph {graph_name} does not exist, no need to drop")
+                return False
+            else:
+                logger.warning(f"Error dropping graph {graph_name}: {e}")
+                return False
+
+    async def _safe_create_graph(self, session, graph_name: str, label: str) -> bool:
+        """安全地创建图，如果图已存在则返回False"""
+        try:
+            result = await session.run(
+                f"""
+                MATCH (source:{label})-[r]->(target:{label})
+                RETURN gds.graph.project(
+                $graph_name,
+                  source,
+                  target,
+                {{ relationshipProperties: r {{ .weight }} }},
+                {{ undirectedRelationshipTypes: ['*'] }}
+                )""",
+                graph_name=graph_name,
+            )
+            record = await result.single()
+            if record:
+                return True
+            return False
+        except Exception as e:
+            if "already exists" in str(e).lower():
+                logger.debug(f"Graph {graph_name} already exists during creation")
+                return False
+            else:
+                logger.error(f"Error creating graph {graph_name}: {e}")
+                raise
+
+    async def _ensure_graph_exists(self, session, graph_name: str, label: str) -> bool:
+        """确保图存在，如果不存在则创建"""
+        # 首先检查图是否存在
+        # try:
+        #     check_result = await session.run(
+        #         "CALL gds.graph.list($graph_name) YIELD graphName RETURN graphName", graph_name=graph_name
+        #     )
+        #     existing = await check_result.single()
+        #     if existing:
+        #         logger.debug(f"Graph {graph_name} already exists")
+        #         return True
+        # except Exception:
+        #     # 如果检查失败，尝试创建
+        #     pass
+
+        # 尝试删除可能存在的图
+        await self._safe_drop_graph(session, graph_name)
+
+        # 创建新图
+        return await self._safe_create_graph(session, graph_name, label)

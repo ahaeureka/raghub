@@ -54,7 +54,8 @@ class ElasticsearchEngine(SearchEngineStorage):
             logger.error(f"Failed to connect to Elasticsearch: {e}")
             raise ConnectionError(f"Failed to connect to Elasticsearch: {str(e)}") from e
         finally:
-            await self._client.close()
+            pass
+            # await self._client.close()
 
     async def create_index(self, index_name: str, index_mapping: Optional[dict] = None):
         """
@@ -112,14 +113,44 @@ class ElasticsearchEngine(SearchEngineStorage):
         """
         if not self._client:
             raise ValueError("Elasticsearch client is not initialized. Call init() first.")
+
         index_name = f"{self._index_name_prefix}_{index_name}"
         new_body = deepcopy(query)
 
         if filter_deleted:
             original_query = new_body.get("query", {})
-            new_query = {"bool": {"must": [original_query], "must_not": {"term": {"is_deleted": True}}}}
-            new_body["query"] = new_query
-        response = await self._client.search(index=index_name, body=query)
+
+            # 如果原查询已经是 bool 查询，需要合并
+            if isinstance(original_query, dict) and "bool" in original_query:
+                # 合并现有的 bool 查询
+                existing_bool = original_query["bool"]
+
+                # 添加 is_deleted 过滤条件
+                if "filter" not in existing_bool:
+                    existing_bool["filter"] = []
+                elif not isinstance(existing_bool["filter"], list):
+                    existing_bool["filter"] = [existing_bool["filter"]]
+
+                existing_bool["filter"].append({"term": {"is_deleted": False}})
+                new_body["query"] = original_query
+            else:
+                # 创建新的 bool 查询
+                new_query = {
+                    "bool": {
+                        "must": [original_query] if original_query else [{"match_all": {}}],
+                        "filter": [{"term": {"is_deleted": False}}],
+                    }
+                }
+                new_body["query"] = new_query
+
+        logger.debug(f"Searching in index {index_name} with body: {new_body}")
+
+        response = await self._client.search(
+            index=index_name,
+            body=new_body,
+            pretty=True,
+        )
+
         hits = response["hits"]["hits"]
         documents: List[SQLModel] = []
         for hit in hits:

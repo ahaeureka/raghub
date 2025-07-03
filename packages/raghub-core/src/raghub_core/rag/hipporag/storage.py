@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Set, Tuple
 from raghub_core.config.raghub_config import CacheConfig, DatabaseConfig, SearchEngineConfig
 from raghub_core.schemas.hipporag_models import OpenIEInfo
 from raghub_core.storage.cache import CacheStorage
-from raghub_core.storage.structed_data import StructedDataStorage
+from raghub_core.storage.rdbms import RDBMSStorage
 from raghub_core.utils.class_meta import ClassFactory
 from raghub_core.utils.misc import compute_mdhash_id
 from sqlmodel import JSON, and_, cast, select
@@ -21,16 +21,14 @@ class HippoRAGLocalStorage(HipporagStorage):
         self._search_engine_config = search_engine_config
         self._cache: Optional[CacheStorage] = None
         self._cache_prefix = "raghub:hipporag"
-        self._db: Optional[StructedDataStorage] = None
+        self._db: Optional[RDBMSStorage] = None
 
     async def create_new_index(self, label: str):
         pass
 
     async def init(self):
         # Initialize storage based on the database configuration
-        self._db = ClassFactory.get_instance(
-            self._db_config.provider, StructedDataStorage, **self._db_config.model_dump()
-        )
+        self._db = ClassFactory.get_instance(self._db_config.provider, RDBMSStorage, **self._db_config.model_dump())
         await self._db.init()
         self._cache = ClassFactory.get_instance(
             self._cache_config.provider, CacheStorage, **self._cache_config.model_dump()

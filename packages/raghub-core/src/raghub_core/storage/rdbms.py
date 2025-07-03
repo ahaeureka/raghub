@@ -6,7 +6,7 @@ from sqlalchemy import Executable
 from sqlmodel import SQLModel
 
 
-class StructedDataStorage(metaclass=SingletonRegisterMeta):
+class RDBMSStorage(metaclass=SingletonRegisterMeta):
     @abstractmethod
     async def init(self):
         raise NotImplementedError("Subclasses should implement this method.")

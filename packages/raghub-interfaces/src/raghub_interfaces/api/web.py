@@ -7,10 +7,10 @@
 """
 
 import asyncio
+import datetime
 import time
 import traceback
 import uuid
-from datetime import datetime
 
 import psutil
 from fastapi import FastAPI, HTTPException, Request
@@ -317,7 +317,7 @@ class WebAPI:
 
             return {
                 "status": "healthy",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z",
                 "metrics": {
                     "cpu_usage": cpu_usage,
                     "memory_usage": memory_info.percent,

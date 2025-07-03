@@ -44,15 +44,16 @@ class BaseRAGTest:
             rag_mode: RAG mode ('hipporag', 'graphrag', or None for default)
         """
         self.client = RAGHubClient(**TestConfig.get_client_config())
-        self.rag_mode = rag_mode or "default"
+        self.rag_mode = rag_mode or TestConfig.RAG_MODE or "default"
 
         # Create mode-specific index names
+        print(f"Initializing BaseRAGTest with rag_mode={self.rag_mode}, use_shared_index={use_shared_index}")
         mode_suffix = f"_{self.rag_mode}" if self.rag_mode != "default" else ""
 
         if use_shared_index:
             # Use fixed shared index names with mode suffix
-            self.test_knowledge_id = f"{TestConfig.TEST_KNOWLEDGE_ID}_shared{mode_suffix}"
-            self.test_index_name = f"{TestConfig.TEST_INDEX_NAME}_shared{mode_suffix}"
+            self.test_knowledge_id = f"{TestConfig.TEST_KNOWLEDGE_ID}_shared_{mode_suffix}"
+            self.test_index_name = f"{TestConfig.TEST_INDEX_NAME}_shared_{mode_suffix}"
         else:
             # Use unique index names with mode suffix
             unique_id = uuid.uuid4().hex[:8]
@@ -152,7 +153,7 @@ class BaseRAGTest:
         """Create test chat request"""
         messages = [ChatMessage(role="user", content=question)]
         retrieval_setting = RetrievalSetting(top_k=top_k)
-
+        print(f"Creating chat request for question: {question}:{self.test_knowledge_id} with top_k={top_k}")
         return CreateChatCompletionRequest(
             knowledge_id=self.test_knowledge_id, messages=messages, retrieval_setting=retrieval_setting
         )

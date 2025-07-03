@@ -11,7 +11,7 @@ model = "${env:LLM_MODEL_NAME:-qwen-plus}"
 base_url = "${env:OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
 api_key = "${env:OPENAI_API_KEY}"
 timeout = 60
-provider = "${env:EMBEDDING_PROVIDER:-openai-proxy}"
+provider = "${env:LLM_PROVIDER:-openai-proxy}"
 temperature = 0.3
 
 [rag.embbeding]

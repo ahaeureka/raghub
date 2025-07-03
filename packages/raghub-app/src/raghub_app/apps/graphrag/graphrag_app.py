@@ -11,7 +11,7 @@ from raghub_core.rerank.base_rerank import BaseRerank
 from raghub_core.schemas.graph_model import GraphRAGRetrieveResultItem
 from raghub_core.schemas.rag_model import RetrieveResultItem
 from raghub_core.storage.graph import GraphStorage
-from raghub_core.storage.structed_data import StructedDataStorage
+from raghub_core.storage.rdbms import RDBMSStorage
 from raghub_core.storage.vector import VectorStorage
 from raghub_core.utils.class_meta import ClassFactory
 
@@ -54,7 +54,7 @@ class GraphRAG(BaseRAGApp):
 
         self._db = ClassFactory.get_instance(
             config.database.provider,
-            StructedDataStorage,
+            RDBMSStorage,
             **config.database.model_dump(),
         )
         self._dao = ClassFactory.get_instance(
@@ -76,10 +76,24 @@ class GraphRAG(BaseRAGApp):
         """
         Initialize the GraphRAG application.
         """
-        self._embedder.init()
+        if asyncio.iscoroutinefunction(self._embedder.init):
+            await self._embedder.init()
+
+        else:
+            self._embedder.init()
+        if asyncio.iscoroutinefunction(self._embedd_store.init):
+            await self._embedd_store.init()
+        else:
+            self._embedd_store.init()
         self.app.init()
-        await self._embedd_store.init()
-        await self._graph_store.init()
+        if asyncio.iscoroutinefunction(self._dao.init):
+            await self._dao.init()
+        else:
+            self._dao.init()
+        if asyncio.iscoroutinefunction(self._graph_store.init):
+            await self._graph_store.init()
+        else:
+            self._graph_store.init()
         await self._db.init()
 
     async def create(self, label: str):

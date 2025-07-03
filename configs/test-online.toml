@@ -1,10 +1,10 @@
-app_name = "RAGHub"
+app_name = "raghub"
 app_version = "0.1.0"
-app_description = "RAGHub Application - GraphRAG Mode"
+app_description = "RAGHub Application"
 
 [logger]
 log_level = "DEBUG"
-log_dir = "/app/output/tests/raghub/logs"
+log_dir = "/app/output/tests/online/.raghub/logs"
 
 [rag.llm]
 model = "${env:LLM_MODEL_NAME:-qwen-plus}"
@@ -18,7 +18,6 @@ temperature = 0.3
 model = "${env:EMBEDDING_MODEL_NAME:-text-embedding-v3}"
 provider = "${env:EMBEDDING_PROVIDER:-openai-proxy-embedding}"
 batch_size = 5
-n_dims=1024
 embedding_key_prefix = "embedding"
 base_url = "${env:OPENAI_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}"
 api_key = "${env:OPENAI_API_KEY}"
@@ -27,17 +26,21 @@ api_key = "${env:OPENAI_API_KEY}"
 lang = "en"
 
 [vector_storage]
-provider = "qdrant"
-collection_name = "graphrag_collection"
-persist_directory = "/app/output/.deeprag/cache/qdrant_db_graphrag"
+provider = "elasticsearch_vector"
+collection_name = "default_collection"
+persist_directory = "/app/output/tests/online/.raghub/cache/chroma_db"
 
 [graph]
-provider = "igraph"
-graph_path = "/app/output/tests/.raghub/storage/graphs/graphrag"
+provider = "neo4j"
+graph_path = "/app/output/tests/online/.raghub/storage/graphs/default_graph.pkl"
+url = "neo4j://127.0.0.1:7688"
+username = "neo4j"
+
 
 [database]
-provider = "sqlite"
-db_url = "sqlite:////app/output/tests/.raghub/app_graphrag.db"
+provider = "mysql"
+db_url = "mysql://root:1q2w3eQzh@localhost:3306/raghub"
+[graphrag]
 
 [hipporag]
 synonymy_edge_topk = 2047
@@ -46,12 +49,24 @@ synonymy_edge_key_batch_size = 1000
 synonymy_edge_sim_threshold = 0.8
 passage_node_weight = 0.05
 linking_top_k = 10
-embedding_prefix = "graphrag_embeddings"
+embedding_prefix = "hipporag_embeddings"
 dspy_file_path = "/app/configs/filter_llama3.3-70B-Instruct.json"
+storage_provider="hipporag_storage_online"
 
 [cache]
-provider = "disk_cache"
-cache_dir = "/app/output/tests/.raghub/cache/graphrag"
+provider = "redis_cache"
+cache_dir = "/app/output/tests/online/.raghub/cache"
+host="127.0.0.1"
+port=6379
+auth="123456"
+[search_engine]
+provider = "elasticsearch"
+host = "localhost"
+port = 9200
+index_name_prefix="raghub_index"
+password="DucGUY3FQw4PS2s"
+
+
 
 [interfaces]
-rag_provider="graphrag_app"
+rag_provider="hipporag_app"

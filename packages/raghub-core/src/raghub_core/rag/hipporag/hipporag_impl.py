@@ -737,6 +737,9 @@ class HippoRAGImpl(BaseRAG):
             List[RetrieveResultItem]
                 A list of RetrieveResultItem objects containing the retrieved documents and their corresponding scores.
         """
+        if not [q.strip() for q in queries if q.strip()]:
+            logger.warning("No valid queries provided for retrieval.")
+            return {}
         query_to_embedding = await self._get_query_embeddings(queries)
         top_k_docs: List[RetrieveResultItem] = []
         query_to_docs: Dict[str, List[RetrieveResultItem]] = {}
@@ -817,7 +820,7 @@ class HippoRAGImpl(BaseRAG):
         if isinstance(docs_to_delete, str):
             docs_to_delete = [docs_to_delete]
 
-        openie_infos = await self._db.get_openie_info(index_name, docs_to_delete)
+        openie_infos = await self._db.get_openie_info(index_name, [str(uid) for uid in docs_to_delete])
         docs_to_delete = [doc.idx for doc in openie_infos]
         chunk_ids_triple_to_delete: Dict[str, List[Tuple[str, str, str]]] = {}
         for doc in openie_infos:
@@ -921,8 +924,14 @@ class HippoRAGImpl(BaseRAG):
         self._embedder.init()
         logger.debug(f"Initializing graph and embedding stores:{self._db}...")
         await self._db.init()
-        await self._embedd_store.init()
-        await self._graph_store.init()
+        if asyncio.iscoroutinefunction(self._embedd_store.init):
+            await self._embedd_store.init()
+        else:
+            self._embedd_store.init()
+        if asyncio.iscoroutinefunction(self._graph_store.init):
+            await self._graph_store.init()
+        else:
+            self._graph_store.init()
 
     def _flatten_facts(self, chunk_triples: List[List[Tuple[str, str, str]]]) -> List[Tuple[str, ...]]:
         """
@@ -1334,11 +1343,14 @@ class HippoRAGImpl(BaseRAG):
             self._embedd_store.asimilar_search_with_scores(
                 index_name=unique_name,
                 query=query,
-                k=100,
+                k=32,
                 filter=filter,
             )
             for query in queries
+            if query.strip()
         ]
+        if not tasks:
+            return {query: [] for query in queries}
         results: List[List[Tuple[Document, float]]] = await asyncio.gather(*tasks)
         query_to_docs: Dict[str, List[Document]] = {}
         for index, r in enumerate(results):

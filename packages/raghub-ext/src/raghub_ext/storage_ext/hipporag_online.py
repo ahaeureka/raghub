@@ -33,6 +33,17 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
         self._search_engine = ClassFactory.get_instance(
             search_engine_config.provider, SearchEngineStorage, **search_engine_config.model_dump()
         )
+        self._openie_prefix = "openie"
+
+    def _get_openie_index_name(self, label: str) -> str:
+        """
+        Get the index name for OpenIE information.
+        Args:
+            label (str): The label for the index.
+        Returns:
+            str: The index name for OpenIE information.
+        """
+        return f"{self._openie_prefix}_{label}"
 
     async def create_new_index(self, label: str):
         index_body = {
@@ -70,7 +81,7 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
                 }
             },
         }
-        await self._search_engine.create_index(label, index_mapping=index_body)
+        await self._search_engine.create_index(self._get_openie_index_name(label), index_mapping=index_body)
 
     async def init(self):
         await super().init()
@@ -127,7 +138,7 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
         """
 
         await self._search_engine.insert_document(
-            label, documents=[self._openie_to_elastic_model(info) for info in openie_info]
+            self._get_openie_index_name(label), documents=[self._openie_to_elastic_model(info) for info in openie_info]
         )
 
     async def get_openie_info(self, label: str, keys: List[str]) -> List[OpenIEInfo]:
@@ -139,7 +150,7 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
             List[OpenIEInfo]: A list of OpenIEInfo objects retrieved from the storage.
         """
         docs = await self._search_engine.get_documents(
-            label,
+            self._get_openie_index_name(label),
             query={"query": {"terms": {"idx": keys}}},
             model_cls=OpenIEInfo,
         )
@@ -154,7 +165,7 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
         Args:
             keys (List[str]): A list of keys to delete OpenIE information.
         """
-        await self._search_engine.delete_documents(label, keys=keys)
+        await self._search_engine.delete_documents(self._get_openie_index_name(label), keys=keys)
 
     async def get_docs_from_triples(self, label: str, triples: Tuple[str, str, str]) -> List[str]:
         """
@@ -199,7 +210,7 @@ class HipporagOnlineStorage(HippoRAGLocalStorage):
             }
         }
         docs = await self._search_engine.get_documents(
-            label,
+            self._get_openie_index_name(label),
             query=query,
             model_cls=OpenIEInfo,
         )

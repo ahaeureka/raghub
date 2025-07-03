@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
+import asyncstdlib
 from raghub_ext.storage_ext.utils.es_query_converter import ESQueryConverter
 
 if TYPE_CHECKING:
@@ -47,6 +50,7 @@ class ElasticsearchVectorStorage(VectorStorage):
         self._async_client: Optional[AsyncElasticsearch] = None
         self._index_name_prefix = index_name_prefix
         self._query_convert = ESQueryConverter()
+        self._client_lock = asyncio.Lock()
 
     def init(self):
         """
@@ -87,6 +91,17 @@ class ElasticsearchVectorStorage(VectorStorage):
             logger.error(f"Failed to initialize Elasticsearch vector store: {e}")
             raise
 
+    @asyncstdlib.lru_cache
+    async def create_index_if_not_exists(self, index_name: str, index_mapping: Optional[dict] = None):
+        """
+        如果索引不存在，则创建 Elasticsearch 索引
+        """
+        if not self._client:
+            raise ValueError("Elasticsearch client is not initialized.")
+        async with self._client_lock:
+            await run_in_executor(None, self._es_store_for_index(index_name)._store._create_index_if_not_exists)
+
+    @lru_cache
     def _es_store_for_index(self, index_name: str) -> ElasticsearchStore:
         """
         创建 ElasticsearchStore 实例
@@ -128,6 +143,9 @@ class ElasticsearchVectorStorage(VectorStorage):
 
         if not self._client:
             raise ValueError("Elasticsearch client is not initialized.")
+        # client = self._es_store_for_index(index_name)
+        await self.create_index_if_not_exists(index_name=index_name)
+        logger.debug(f"Adding {texts} documents to index {index_name} with IDs: {ids}")
         ids = await self._es_store_for_index(index_name).aadd_texts(texts=contents, metadatas=metadatas, ids=ids)
         return await self.get_by_ids(index_name=index_name, ids=ids)
 
@@ -162,8 +180,9 @@ class ElasticsearchVectorStorage(VectorStorage):
                 logger.warning(f"Document {index_name} with ID {res['_id']} not found:{res}.")
                 continue
             source = res["_source"]
+            # logger.debug(f"Processing document source: {source} with _id {res['_id']}")
             source["uid"] = res["_id"]  # 将 _id 转换为 uid
-            source["content"] = source.get("text", "")
+            source["content"] = source.get("text", "") or source.get("passage", "")
             source["summary"] = source.get("metadata", {}).pop("summary", "")
             source["embedding"] = source.pop("vector", [])
             doc = Document(**source)

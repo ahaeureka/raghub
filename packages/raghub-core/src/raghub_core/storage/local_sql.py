@@ -3,14 +3,14 @@ import os
 from typing import Any, List, Optional, Type
 
 from loguru import logger
-from raghub_core.storage.structed_data import StructedDataStorage
+from raghub_core.storage.rdbms import RDBMSStorage
 from sqlalchemy import Engine, Executable
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import SQLModel, select, update
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 
-class LocalSQLStorage(StructedDataStorage):
+class SQLStorage(RDBMSStorage):
     name = "sqlite"
 
     def __init__(self, db_url: str):
@@ -18,12 +18,18 @@ class LocalSQLStorage(StructedDataStorage):
         self._engine: Optional[AsyncEngine] = None
 
     async def init(self):
+        need_local_persistence = self.db_url.startswith("sqlite://") or self.db_url.startswith("duckdb://")
         if self.db_url.startswith("sqlite://"):
             self.db_url = self.db_url.replace("sqlite://", "sqlite+aiosqlite:///")
+        if self.db_url.startswith("mysql://"):
+            self.db_url = self.db_url.replace("mysql://", "mysql+aiomysql://")
+        if self.db_url.startswith("postgresql://"):
+            self.db_url = self.db_url.replace("postgresql://", "postgresql+asyncpg://")
         path = self.db_url.split("://")[-1]
         logger.debug(f"Initializing SQLite database at {self.db_url}")
-        path_dir = os.path.dirname(path)
-        os.makedirs(path_dir, exist_ok=True)
+        if need_local_persistence:
+            path_dir = os.path.dirname(path)
+            os.makedirs(path_dir, exist_ok=True)
         self._engine = create_async_engine(self.db_url)
         async with self._engine.begin() as conn:
             await conn.run_sync(SQLModel.metadata.create_all)

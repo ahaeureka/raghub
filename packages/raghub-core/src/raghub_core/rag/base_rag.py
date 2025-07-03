@@ -153,6 +153,9 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
             Dict[str, List[RetrieveResultItem]]: Dictionary with queries as keys and
             lists of RetrieveResultItem as values.
         """
+        if not [query.strip() for query in queries]:
+            logger.warning("No valid queries provided for hybrid retrieval.")
+            return {query: [] for query in queries}
         graph_retrieval_result: Dict[str, List[RetrieveResultItem]] = await self.retrieve(unique_name, queries, top_k)
         embedding_retrieval_results: Dict[str, List[RetrieveResultItem]] = await self.embedding_retrieve(
             unique_name, queries, filter
@@ -170,6 +173,9 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
         hybrid_results: Dict[str, List[RetrieveResultItem]] = {}
         query_to_docs: Dict[str, List[Document]] = {}
         for query in queries:
+            if not query:
+                logger.warning("Empty query detected, skipping hybrid retrieval.")
+                continue
             query_to_docs[query] = [item.document for item in graph_retrieval_result[query]] + [
                 item.document for item in embedding_retrieval_results[query]
             ]
@@ -177,9 +183,10 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
                 logger.warning(f"No documents found for query '{query}' in hybrid retrieval.")
                 continue
             query_to_docs[query] = duplicate_filter(query_to_docs[query])
+            logger.debug(f"Documents for query '{query}': {[doc.content for doc in query_to_docs[query]]}")
             rerank_to_docs: Dict[str, float] = await reranker.rerank(query, query_to_docs[query])
             logger.debug(
-                f"Rerank results for query '{query}': {rerank_to_docs}, similarity_threshold: {similarity_threshold}"
+                f"Rerank results for query '{query}': {[rerank_to_docs]}, similarity_threshold: {similarity_threshold}"
             )
             if not rerank_to_docs:
                 logger.warning(f"No reranked documents for query '{query}'")
@@ -198,7 +205,9 @@ class BaseRAG(metaclass=SingletonRegisterMeta):
             ]
             if len(rerank_docs) > top_k:
                 rerank_docs = rerank_docs[:top_k]
-            logger.debug(f"Rerank documents for query '{query}': {[doc.uid for doc in rerank_docs]} for top_k: {top_k}")
+            logger.debug(
+                f"Rerank documents for query '{query}': {[doc.content for doc in rerank_docs]} for top_k: {top_k}"
+            )
             hybrid_results[query] = [
                 RetrieveResultItem(
                     document=doc,

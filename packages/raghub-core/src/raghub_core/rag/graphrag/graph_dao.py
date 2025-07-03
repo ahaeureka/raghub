@@ -16,7 +16,7 @@ from raghub_core.schemas.graph_model import (
 )
 from raghub_core.schemas.hipporag_models import OpenIEInfo
 from raghub_core.storage.graph import GraphStorage
-from raghub_core.storage.structed_data import StructedDataStorage
+from raghub_core.storage.rdbms import RDBMSStorage
 from raghub_core.storage.vector import VectorStorage
 from raghub_core.utils.graph.graph_helper import GraphHelper
 
@@ -33,7 +33,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         self,
         embedding_store: VectorStorage,
         graph_store: GraphStorage,
-        db: StructedDataStorage,
+        db: RDBMSStorage,
     ):
         """
         Initialize the GraphRAGDAO with a specific storage backend.
@@ -301,6 +301,7 @@ class GraphRAGDAO(BaseGraphRAGDAO):
         Returns:
             List[GraphCommunity]: List of communities matching the query.
         """
+        logger.debug(f"Searching communities with label: {label}, query: {query}, top_k: {top_k}")
         results = await self.embedding_store.asimilar_search_with_scores(label, query, top_k)
         logger.debug(f"Found {[(d.uid, similar) for d, similar in results]} communities for query: {query}")
         return [
